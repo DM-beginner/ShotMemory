@@ -1,0 +1,101 @@
+[tool.ruff]
+# 目标 Python 版本
+target-version = "py313"
+
+# 排除目录
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "alembic/versions",
+    "*.pyc",
+]
+
+[tool.ruff.lint]
+# 规则集选择
+# E: pycodestyle 错误
+# F: Pyflakes 逻辑错误
+# I: isort 导入排序
+# UP: pyupgrade 语法升级
+# N: pep8-naming 命名规范
+# B: flake8-bugbear 潜在 bug
+# A: flake8-builtins 内置名称遮蔽
+# C4: flake8-comprehensions 推导式优化
+# SIM: flake8-simplify 简化代码
+# ASYNC: flake8-async 异步检查
+# RUF: Ruff 特有规则
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "N",      # pep8-naming
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "ASYNC",  # flake8-async
+    "RUF",    # Ruff-specific
+]
+
+# 忽略的规则
+ignore = [
+    "RUF001",  # 全角字符在字符串中 (String)
+    "RUF002",  # 全角字符在文档字符串中 (Docstring) -> 你的情况
+    "RUF003",  # 全角字符在注释中 (Comment)
+    "E501",   # 行太长（由 formatter 处理）
+    "B008",   # 函数参数默认值为函数调用（FastAPI Depends 需要）
+    "RUF012", # 可变类属性注解（Pydantic 模型需要）
+]
+
+# 允许自动修复的规则
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+# 导入排序配置
+known-first-party = ["core", "services", "middlewares", "utils"]
+
+
+[tool.ruff.lint.per-file-ignores]
+# 测试文件允许使用 assert
+"tests/**/*.py" = ["S101"]
+# Alembic 迁移文件忽略部分规则
+"alembic/**/*.py" = ["E501", "N999"]
+
+[tool.ruff.format]
+# 格式化配置
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[project]
+name = "fastapi-cli"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "alembic>=1.17.2",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.124.4",
+    "gunicorn>=23.0.0",
+    "loguru>=0.7.3",
+    "orjson>=3.11.5",
+    "pwdlib[argon2]>=0.3.0",
+    "py-healthcheck>=1.10.1",
+    "pydantic-settings>=2.12.0",
+    "pydantic[email]>=2.12.5",
+    "pyjwt>=2.10.1",
+    "sqlalchemy>=2.0.45",
+    "uuid6>=2025.0.1",
+    "uvicorn>=0.38.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.13",
+]

@@ -1,0 +1,34 @@
+# Pre-commit 配置
+# 安装: pip install pre-commit && pre-commit install
+# 手动运行: pre-commit run --all-files
+
+repos:
+  # ========================
+  # 🐍 Python (Ruff) - 后端
+  # ========================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.13
+    hooks:
+      # Ruff Linter (检查代码质量)
+      - id: ruff-check
+        name: ruff lint
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      # Ruff Formatter (格式化代码)
+      - id: ruff-format
+        name: ruff format
+        files: ^backend/
+
+  # ========================
+  # ⚡ TypeScript/React (Biome) - 前端
+  # ========================
+  - repo: local
+    hooks:
+      - id: local-biome-check
+        name: biome check
+        entry: npx biome check --write --files-ignore-unknown=true --no-errors-on-unmatched
+        language: system
+        types: [text]
+        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css|svelte|vue|astro|graphql|gql)$"
+        # files: ^frontend/src/
+

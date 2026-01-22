@@ -1,0 +1,40 @@
+{
+  // =========================================================
+  // 1. 全局通用设置
+  // =========================================================
+  "editor.formatOnSave": true, // 所有文件保存时自动格式化
+  "editor.unicodeHighlight.includeComments": false,
+  "editor.unicodeHighlight.includeStrings": false,
+  // =========================================================
+  // 2. Python 后端配置 (由 Ruff 接管)
+  // =========================================================
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff", // 指定 Ruff 为格式化器
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",       // 自动修复 Lint 错误 (如 F401)
+      "source.organizeImports": "explicit" // 自动排序 import
+    }
+  },
+
+  // =========================================================
+  // 3. 前端语言配置 (由 Biome 接管)
+  // =========================================================
+  // 遇到这些文件，强制使用 Biome
+  "[javascript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[javascriptreact]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[typescript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[typescriptreact]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[json]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[jsonc]": { "editor.defaultFormatter": "biomejs.biome" },
+
+  // =========================================================
+  // 4. Biome 的智能动作 (全局生效)
+  // =========================================================
+  // Biome 很聪明，它会自动忽略 Python 文件，所以放在最外层也没关系
+  // 这样写的好处是：任何 Biome 支持的文件都会自动触发，不需要在每个 [语言] 里写一遍
+  "editor.codeActionsOnSave": {
+    // 显式指定调用 biome 的修复功能
+    "source.fixAll.biome": "explicit",
+    "source.organizeImports.biome": "explicit"
+  }
+}
