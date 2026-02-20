@@ -1,7 +1,8 @@
+from datetime import datetime
 from uuid import UUID
 
 import uuid6
-from sqlalchemy import MetaData, text
+from sqlalchemy import DateTime, MetaData, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import UUID as SQL_UUID
 
@@ -14,8 +15,8 @@ POSTGRES_INDEXES_NAMING_CONVENTION = {
 }
 
 
-class Base(DeclarativeBase):
-    __abstract__ = True
+class IDMixin:
+    """ID 主键 Mixin"""
 
     id: Mapped[UUID] = mapped_column(
         # as_uuid=True SQLAlchemy 会自动把这个字符串转换成 Python 的 uuid.UUID 对象。
@@ -27,5 +28,32 @@ class Base(DeclarativeBase):
         # 这样无论是 ORM 还是原生 SQL，都能自动生成 UUID
         server_default=text("gen_random_uuid()"),
     )
+
+
+class CreatedTimeMixin:
+    """创建时间 Mixin"""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        comment="创建时间",
+    )
+
+
+class UpdatedTimeMixin:
+    """更新时间 Mixin"""
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="更新时间",
+    )
+
+
+class Base(IDMixin, DeclarativeBase):
+    """基础模型类（包含 ID）"""
+
+    __abstract__ = True
 
     metadata = MetaData(naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION)

@@ -31,6 +31,13 @@ class APIStatus(Enum):
     TOKEN_NOT_PROVIDED = (40204, "Refresh Token 未提供")
     TOKEN_TYPE_ERROR = (40205, "Token 类型错误")
 
+    # --- 403xx: 文件/存储模块 ---
+    FILE_UPLOAD_FAILED = (40301, "文件上传失败")
+    FILE_NOT_FOUND = (40302, "文件不存在")
+    FILE_DELETE_FAILED = (40303, "文件删除失败")
+    FILE_TYPE_NOT_ALLOWED = (40304, "不支持的文件类型")
+    FILE_TOO_LARGE = (40305, "文件大小超出限制")
+
     # --- 500xx: 服务端错误 ---
     SYSTEM_ERROR = (50000, "系统内部错误")
     DB_ERROR = (50001, "数据库操作异常")

@@ -4,17 +4,23 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.base_model import Base
+from core.base_model import Base, CreatedTimeMixin, IDMixin
 
 if TYPE_CHECKING:
     from services.auth.models.refresh_token_model import RefreshToken
 
 
-class User(Base):
+class User(Base, IDMixin, CreatedTimeMixin):
     __tablename__ = "user"
     __table_args__ = (
         # 1. 软删除的唯一性陷阱 (见下文解释)
-        # 只有在未删除的情况下，Email 和 Phone 才需要唯一
+        # 只有在未删除的情况下，Name，Email 和 Phone 才需要唯一
+        Index(
+            "ix_user_name_active",
+            "name",
+            unique=True,
+            postgresql_where=text("is_deleted = false"),
+        ),
         Index(
             "ix_user_email_active",
             "email",
@@ -34,12 +40,12 @@ class User(Base):
         },
     )
 
-    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(50))
 
     # 账号 (唯一索引)
-    # Optional会创建nullable=True,没有Optional就是nullable=False
-    email: Mapped[str | None] = mapped_column(String(255), unique=True)
-    phone: Mapped[str | None] = mapped_column(String(20), unique=True)
+    # Optional(已改为|None)会创建nullable=True,没有Optional就是nullable=False
+    email: Mapped[str | None] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(20))
 
     # 安全字段
     hashed_password: Mapped[str | None] = mapped_column(String)
@@ -48,9 +54,7 @@ class User(Base):
     is_deleted: Mapped[bool] = mapped_column(default=False)  # 软删除
 
     # --- 时间字段 ---
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    # created_at 由 CreatedTimeMixin 提供
     last_active_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -63,5 +67,5 @@ class User(Base):
         "RefreshToken",
         back_populates="user",
         cascade="all, delete-orphan",
-        lazy="select",
+        lazy="selectin",
     )

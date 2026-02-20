@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "geoalchemy2>=0.18.1",
+    "oss2>=2.19.1",
+    "pillow>=12.1.1",
+]
 
 [dependency-groups]
 dev = [

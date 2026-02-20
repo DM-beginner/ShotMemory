@@ -1,8 +1,10 @@
+import contextlib
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
 from core.config import settings
@@ -18,6 +20,9 @@ from core.logger import setup_logging
 from core.root_router import router as root_router
 from middlewares.logger_middleware import log_requests_middleware
 from services.auth.routers.auth_router import router as auth_router
+from services.photo_story.routers.photo_router import router as photo_router
+from services.photo_story.routers.story_router import router as story_router
+from services.photo_story.routers.upload_router import router as upload_router
 
 
 @asynccontextmanager
@@ -53,10 +58,31 @@ def register_exception_handlers(_app: FastAPI) -> None:
     _app.add_exception_handler(Exception, general_exception_handler)
 
 
+def register_static_files(_app: FastAPI) -> None:
+    """
+    挂载静态文件服务
+    - 开发环境下，通过 /static 路径访问本地上传的文件
+    - 例如: http://localhost:5683/static/uploads/xxx.jpg
+    """
+    if settings.ENV == "dev":
+        from pathlib import Path
+
+        # 确保 uploads 目录存在
+        Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+        _app.mount(
+            settings.STATIC_URL_PREFIX,
+            StaticFiles(directory="."),
+            name="static",
+        )
+
+
 def register_routes(_app: FastAPI) -> None:
     prefix_version = "/v1"
     _app.include_router(router=root_router)
     _app.include_router(router=auth_router, prefix=f"{prefix_version}")
+    _app.include_router(router=upload_router, prefix=f"{prefix_version}")
+    _app.include_router(router=photo_router, prefix=f"{prefix_version}")
+    _app.include_router(router=story_router, prefix=f"{prefix_version}")
 
 
 def create_app() -> FastAPI:
@@ -69,17 +95,16 @@ def create_app() -> FastAPI:
     register_middleware(_app)
     register_exception_handlers(_app)
     register_routes(_app)
+    register_static_files(_app)
 
     return _app
 
 
 def run() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         import uvloop  # pyright: ignore[reportMissingImports]
 
         uvloop.install()
-    except ImportError:
-        pass  # uvloop 在 Windows 上不可用，静默跳过
 
     if settings.ENV == "dev":
         uvicorn.run(

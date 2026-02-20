@@ -8,7 +8,7 @@ from fastapi.security import APIKeyCookie
 from core.config import settings
 from core.database import SessionDep
 from services.auth.models.user_model import User
-from services.auth.repos.user_repo import get_user_by_id
+from services.auth.repos import UserRepo
 from services.auth.schemas.token_schema import TokenPayload
 
 # Cookie 名称常量 (与 auth_router 保持一致)
@@ -70,7 +70,7 @@ async def get_current_user(
         )
 
     # 查库获取用户
-    user = await get_user_by_id(db, UUID(token_data.sub))
+    user = await UserRepo.get_user_by_id(db, UUID(token_data.sub))
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

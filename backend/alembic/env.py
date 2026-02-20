@@ -14,9 +14,11 @@ from core.config import settings
 # 🔥 必须导入所有模型，让 Alembic 能扫描到它们
 from services.auth.models.refresh_token_model import RefreshToken
 from services.auth.models.user_model import User
+from services.photo_story.models.photo_model import Photo
+from services.photo_story.models.story_model import Story
 
 # 将导入的名称赋值给 __all__。这告诉 linter：“我是故意导入它的，因为我要把它作为模块的一部分导出。”
-__all__ = ["RefreshToken", "User"]  # 如果有新的模型，也要在这里添加导入
+__all__ = ["Photo", "RefreshToken", "Story", "User"]
 
 sys.path.append(dirname(dirname(abspath(__file__))))
 # this is the Alembic Config object, which provides

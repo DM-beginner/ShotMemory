@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # 存储配置
+    UPLOAD_DIR: str = "uploads"
+    STATIC_URL_PREFIX: str = "/static"
+
+    # 阿里云 OSS 配置（生产环境通过环境变量注入）
+    OSS_ACCESS_KEY_ID: str = ""
+    OSS_ACCESS_KEY_SECRET: str = ""
+    OSS_BUCKET_NAME: str = ""
+    OSS_ENDPOINT: str = ""
+    OSS_CDN_DOMAIN: str = ""
+
     # Cookie 配置
     COOKIE_DOMAIN: str | None = None  # 开发环境设为 None，生产环境设为你的域名
     COOKIE_SECURE: bool = False  # 生产环境设为 True (HTTPS)

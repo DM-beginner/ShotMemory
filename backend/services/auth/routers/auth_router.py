@@ -14,20 +14,7 @@ from core.database import SessionDep
 from core.unify_response import UnifyResponse
 from services.auth.models.refresh_token_model import RefreshToken
 from services.auth.models.user_model import User
-from services.auth.repos.refresh_token_repo import (
-    delete_refresh_token,
-    delete_refresh_token_by_user_id,
-    get_refresh_token,
-    upsert_refresh_token,
-)
-from services.auth.repos.user_repo import (
-    create_user,
-    get_user_by_email,
-    get_user_by_email_or_phone,
-    get_user_by_id,
-    get_user_by_phone,
-    soft_delete_user,
-)
+from services.auth.repos import RefreshTokenRepo, UserRepo
 from services.auth.schemas.token_schema import (
     AuthResponseData,
     LoginRequest,
@@ -161,7 +148,7 @@ def _db_token_exist_verify(db_token: RefreshToken | None) -> None:
 async def _db_token_expired_verify(db: SessionDep, db_token: RefreshToken) -> None:
     """校验 token 是否过期，如果过期则删除"""
     if db_token.expires_at <= datetime.now(UTC):
-        await delete_refresh_token(db, db_token)
+        await RefreshTokenRepo.delete_refresh_token(db, db_token)
         raise BusinessError(
             code=APIStatus.TOKEN_EXPIRED.code,
             message=APIStatus.TOKEN_EXPIRED.msg,
@@ -181,16 +168,16 @@ async def register(
     """
     # 1. 检查邮箱是否已存在
     if form_data.email:
-        existing_user = await get_user_by_email(db, form_data.email)
+        existing_user = await UserRepo.get_user_by_email(db, form_data.email)
         _user_not_exist_verify(existing_user, "邮箱")
 
     # 2. 检查手机号是否已存在
     if form_data.phone:
-        existing_user = await get_user_by_phone(db, form_data.phone)
+        existing_user = await UserRepo.get_user_by_phone(db, form_data.phone)
         _user_not_exist_verify(existing_user, "手机号")
 
     # 3. 创建用户
-    user = await create_user(
+    user = await UserRepo.create_user(
         db=db,
         name=form_data.name,
         email=form_data.email,
@@ -222,7 +209,7 @@ async def login(
     - 不同设备登录会创建新的 token（支持多设备）
     """
     # 1. 查找用户（根据邮箱或手机号）
-    user = await get_user_by_email_or_phone(
+    user = await UserRepo.get_user_by_email_or_phone(
         db, email=form_data.email, phone=form_data.phone
     )
 
@@ -239,7 +226,7 @@ async def login(
     expires_at = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
     # upsert_refresh_token 内部已使用 CTE 同时更新 last_active_at
-    await upsert_refresh_token(
+    await RefreshTokenRepo.upsert_refresh_token(
         db=db,
         user_id=user.id,
         device_id=form_data.device_id,
@@ -281,13 +268,13 @@ async def refresh_token(
         user_id = UUID(payload["sub"])
 
         # 2. 验证数据库中的 token
-        db_token = await get_refresh_token(db, refresh_token)
+        db_token = await RefreshTokenRepo.get_refresh_token(db, refresh_token)
 
         _db_token_exist_verify(db_token)
         await _db_token_expired_verify(db, db_token)
 
         # 4. 查用户是否存在
-        user = await get_user_by_id(db, user_id)
+        user = await UserRepo.get_user_by_id(db, user_id)
 
         _user_exist_verify(user)
         _user_valid_verify(user)
@@ -301,7 +288,7 @@ async def refresh_token(
         )
 
         # upsert_refresh_token 内部已使用 CTE 同时更新 last_active_at
-        await upsert_refresh_token(
+        await RefreshTokenRepo.upsert_refresh_token(
             db=db,
             user_id=user_id,
             device_id=db_token.device_id,  # 使用原 token 的 device_id
@@ -342,9 +329,9 @@ async def logout(
     # 如果有 refresh_token，则删除它
     if refresh_token:
         try:
-            db_token = await get_refresh_token(db, refresh_token)
+            db_token = await RefreshTokenRepo.get_refresh_token(db, refresh_token)
             if db_token:
-                await delete_refresh_token(db, db_token)
+                await RefreshTokenRepo.delete_refresh_token(db, db_token)
         except Exception:
             # 即使删除失败也继续清除 Cookie
             pass
@@ -377,15 +364,15 @@ async def delete_account(
         user_id = UUID(payload["sub"])
 
         # 2. 查询用户
-        user = await get_user_by_id(db, user_id)
+        user = await UserRepo.get_user_by_id(db, user_id)
         _user_exist_verify(user)
         _user_valid_verify(user)
 
         # 3. 软删除用户
-        await soft_delete_user(db, user)
+        await UserRepo.soft_delete_user(db, user)
 
         # 4. 删除 refresh_token
-        await delete_refresh_token_by_user_id(db, user_id)
+        await RefreshTokenRepo.delete_refresh_token_by_user_id(db, user_id)
 
         # 5. 清除 Cookie
         response_data = AuthResponseData(message="账号已注销", token_type="bearer")

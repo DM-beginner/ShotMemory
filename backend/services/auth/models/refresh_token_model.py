@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
-from core.base_model import Base
+from core.base_model import Base, CreatedTimeMixin, IDMixin
 
 if TYPE_CHECKING:
     from services.auth.models.user_model import User
 
 
-class RefreshToken(Base):
+class RefreshToken(Base, IDMixin, CreatedTimeMixin):
     __tablename__ = "refresh_token"
     __table_args__ = (
         # 核心逻辑: 一个用户 + 一个设备 = 唯一的一个 Token 记录
@@ -26,6 +25,7 @@ class RefreshToken(Base):
 
     # 关联用户 (级联删除：用户注销，Token 自动清理)
     # unique=True: 一个用户只能有一个 refresh_token，用于 UPSERT 冲突检测
+    # ondelete="CASCADE" (级联删除) -- 用户注销，Token 自动清理
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("auth.user.id", ondelete="CASCADE"), index=True
     )
@@ -37,10 +37,7 @@ class RefreshToken(Base):
 
     # ⏳ 生命周期
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),  # server_default: 数据库层面的默认值, default: Python层面的默认值
-    )
+    # created_at 由 CreatedTimeMixin 提供
 
     device_id: Mapped[uuid.UUID] = mapped_column(unique=True)
 
