@@ -38,6 +38,16 @@ class APIStatus(Enum):
     FILE_TYPE_NOT_ALLOWED = (40304, "不支持的文件类型")
     FILE_TOO_LARGE = (40305, "文件大小超出限制")
 
+    # --- 404xx: 照片/故事模块 ---
+    PHOTO_NOT_FOUND = (40401, "照片不存在")
+    PHOTO_ACCESS_DENIED = (40402, "无权访问该照片")
+    PHOTO_PROCESSING_FAILED = (40403, "照片处理失败")
+    STORY_NOT_FOUND = (40404, "故事不存在")
+    STORY_ACCESS_DENIED = (40405, "无权访问该故事")
+    STORY_PHOTO_ALREADY_EXISTS = (40406, "照片已在故事中")
+    STORY_PHOTO_NOT_FOUND = (40407, "照片不在该故事中")
+    THUMBNAIL_GENERATION_FAILED = (40408, "缩略图生成失败")
+
     # --- 500xx: 服务端错误 ---
     SYSTEM_ERROR = (50000, "系统内部错误")
     DB_ERROR = (50001, "数据库操作异常")
@@ -52,3 +62,15 @@ class APIStatus(Enum):
     def msg(self):
         """获取提示信息"""
         return self.value[1]
+
+class BaseError(Exception):
+    """基础异常"""
+
+    def __init__(
+        self,
+        code: int = APIStatus.BAD_REQUEST.code,
+        message: str = APIStatus.BAD_REQUEST.msg,
+        data: dict | None = None,
+        status_code: int = 400,
+    ):
+        super().__init__(code=code, message=message, data=data, status_code=status_code)

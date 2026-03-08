@@ -1,27 +1,28 @@
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
-from fastapi import APIRouter, Cookie
+from fastapi import APIRouter, Cookie, Depends
 from fastapi.responses import ORJSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 
 from core import security
-from core.base_code import APIStatus
 from core.base_schema import BaseResponse
 from core.config import settings
-from core.custom_exception import BusinessError
 from core.database import SessionDep
+from core.exceptions import APIStatus, BaseError
 from core.unify_response import UnifyResponse
 from services.auth.models.refresh_token_model import RefreshToken
 from services.auth.models.user_model import User
 from services.auth.repos import RefreshTokenRepo, UserRepo
-from services.auth.schemas.token_schema import (
+from services.auth.schemas import (
     AuthResponseData,
     LoginRequest,
+    OAuth2TokenResponse,
     RegisterRequest,
+    RegisterResponseData,
     TokenPayload,
 )
-from services.auth.schemas.user_schema import RegisterResponseData
 
 router = APIRouter(tags=["auth"], prefix="/auth")
 
@@ -80,7 +81,7 @@ def _clear_auth_cookies(response: ORJSONResponse) -> None:
 def _user_valid_verify(user: User) -> None:
     """校验用户状态是否正常（未被删除、未被冻结）"""
     if user.is_deleted:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.USER_DELETED.code,
             message=APIStatus.USER_DELETED.msg,
             status_code=400,
@@ -90,7 +91,7 @@ def _user_valid_verify(user: User) -> None:
 def _user_exist_verify(user: User | None) -> None:
     """如果用户不存在，报错"""
     if not user:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.USER_NOT_FOUND.code,
             message=APIStatus.USER_NOT_FOUND.msg,
             status_code=404,
@@ -100,7 +101,7 @@ def _user_exist_verify(user: User | None) -> None:
 def _user_not_exist_verify(user: User | None, field: str = "账号") -> None:
     """如果用户存在，报错（用于注册时检查）"""
     if user:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.USER_EXISTS.code, message=f"{field}已被注册", status_code=400
         )
 
@@ -108,7 +109,7 @@ def _user_not_exist_verify(user: User | None, field: str = "账号") -> None:
 def _user_password_verify(user: User, password: str) -> None:
     """校验密码是否正确"""
     if not security.verify_password(password, user.hashed_password):
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.USER_PASSWORD_ERROR.code,
             message=APIStatus.USER_PASSWORD_ERROR.msg,
             status_code=401,
@@ -118,7 +119,7 @@ def _user_password_verify(user: User, password: str) -> None:
 def _refresh_token_exist_verify(refresh_token: str | None) -> None:
     """校验 refresh_token 是否提供"""
     if not refresh_token:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_NOT_PROVIDED.code,
             message=APIStatus.TOKEN_NOT_PROVIDED.msg,
             status_code=401,
@@ -128,7 +129,7 @@ def _refresh_token_exist_verify(refresh_token: str | None) -> None:
 def _refresh_token_type_verify(payload: TokenPayload) -> None:
     """校验 token 类型是否为 refresh"""
     if payload.get("type") != "refresh":
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_TYPE_ERROR.code,
             message=APIStatus.TOKEN_TYPE_ERROR.msg,
             status_code=401,
@@ -138,7 +139,7 @@ def _refresh_token_type_verify(payload: TokenPayload) -> None:
 def _db_token_exist_verify(db_token: RefreshToken | None) -> None:
     """校验数据库中的 token 是否存在"""
     if not db_token:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_INVALID.code,
             message=APIStatus.TOKEN_INVALID.msg,
             status_code=401,
@@ -149,7 +150,7 @@ async def _db_token_expired_verify(db: SessionDep, db_token: RefreshToken) -> No
     """校验 token 是否过期，如果过期则删除"""
     if db_token.expires_at <= datetime.now(UTC):
         await RefreshTokenRepo.delete_refresh_token(db, db_token)
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_EXPIRED.code,
             message=APIStatus.TOKEN_EXPIRED.msg,
             status_code=401,
@@ -245,6 +246,67 @@ async def login(
     return response
 
 
+@router.post("/token", response_model=OAuth2TokenResponse)
+async def oauth2_token(
+    db: SessionDep,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    """
+    OAuth2 标准 Token 端点（用于 Swagger UI 认证）
+    - 使用 application/x-www-form-urlencoded 格式
+    - username 字段接受邮箱或手机号
+    - 返回 access_token 在响应体中
+    - 同时设置 HTTPOnly Cookie（兼容前端）
+    form_data: OAuth2PasswordRequestForm = Depends()这行代码在 FastAPI 底层运行起来时，完全等同于： form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm)
+    """
+    # 1. 判断 username 是邮箱还是手机号
+    username = form_data.username
+    email = None
+    phone = None
+
+    if "@" in username:
+        email = username
+    else:
+        phone = username
+
+    # 2. 查找用户
+    user = await UserRepo.get_user_by_email_or_phone(db, email=email, phone=phone)
+
+    # 3. 安全校验
+    _user_exist_verify(user)
+    _user_password_verify(user, form_data.password)
+    _user_valid_verify(user)
+
+    # 4. 生成 Token
+    access_token = security.create_access_token(user.id)
+    refresh_token = security.create_refresh_token(user.id)
+
+    # 5. 存入数据库（使用随机 device_id，因为 Swagger 测试不需要设备绑定）
+    expires_at = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    device_id = uuid4()
+
+    await RefreshTokenRepo.upsert_refresh_token(
+        db=db,
+        user_id=user.id,
+        device_id=device_id,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+    )
+
+    # 6. 创建响应（OAuth2 标准格式）
+    response = ORJSONResponse(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+    )
+
+    # 7. 同时设置 Cookie（前端兼容性）
+    _set_auth_cookies(response, access_token, refresh_token)
+
+    return response
+
+
 @router.post("/refresh", response_model=BaseResponse[AuthResponseData])
 async def refresh_token(
     db: SessionDep,
@@ -305,13 +367,13 @@ async def refresh_token(
         return response
 
     except jwt.ExpiredSignatureError:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_EXPIRED.code,
             message=APIStatus.TOKEN_EXPIRED.msg,
             status_code=401,
         ) from None
     except jwt.PyJWTError:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_INVALID.code,
             message=APIStatus.TOKEN_INVALID.msg,
             status_code=401,
@@ -384,7 +446,7 @@ async def delete_account(
         return response
 
     except jwt.PyJWTError:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.TOKEN_INVALID.code,
             message=APIStatus.TOKEN_INVALID.msg,
             status_code=401,

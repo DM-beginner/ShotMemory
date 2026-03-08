@@ -22,14 +22,14 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.1"
 
     # 服务配置
-    HOST: str = "localhost"
+    HOST: str = "0.0.0.0"
     PORT: int = 5683
 
     # 数据库配置
     DATABASE_URL: str = "fake"
 
     # 日志配置
-    LOG_PATH: str = "logs/shot-memory.log"
+    LOG_PATH: str = "logs/shotmemory.log"
     ROTATION: str = "1 day"
     RETENTION: str = "10 days"
 
@@ -43,10 +43,10 @@ class Settings(BaseSettings):
     METHODS: list[str] = ["*"]
     HEADERS: list[str] = ["*"]
 
-    # Redis 配置（按需启用）
-    # REDIS_HOST: str = "localhost"
-    # REDIS_PORT: int = 6379
-
+    # Redis 配置
+    REDIS_CACHE_URL: str = "redis://127.0.0.1:6379/0"
+    REDIS_ARQ_URL: str = "redis://127.0.0.1:6379/1"
+    
     # JWT 配置（SECRET_KEY）
     SECRET_KEY: str = "fake"
     ALGORITHM: str = "HS256"

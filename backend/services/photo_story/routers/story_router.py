@@ -2,14 +2,13 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from core.base_code import APIStatus
 from core.base_schema import BaseResponse
-from core.custom_exception import BusinessError
 from core.database import SessionDep
+from core.exceptions import APIStatus, BaseError
 from core.unify_response import UnifyResponse
 from services.auth.routers.user_deps import CurrentUser
-from services.photo_story.models.photo_story_m2m import StoryPhotoM2M
 from services.photo_story.models.story_model import Story
+from services.photo_story.models.story_photo_m2m import PhotoStoryM2M
 from services.photo_story.repos.photo_repo import PhotoRepo
 from services.photo_story.repos.story_repo import StoryRepo
 from services.photo_story.schemas.story_schema import (
@@ -57,7 +56,7 @@ async def create_story(
 
             # 插入 M2M 关系
             await db.execute(
-                StoryPhotoM2M.__table__.insert().values(
+                PhotoStoryM2M.__table__.insert().values(
                     story_id=story.id, photo_id=photo_id
                 )
             )
@@ -65,7 +64,7 @@ async def create_story(
         await db.commit()
 
     return UnifyResponse.success(
-        data=StoryResponse.model_validate(story).model_dump(),
+        data=StoryResponse.model_validate(story).model_dump(mode="json"),
         message="故事创建成功",
     )
 
@@ -86,7 +85,7 @@ async def get_story(
     story = await StoryRepo.get_by_id(db, story_id, with_photos=True)
 
     if not story:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.NOT_FOUND.code,
             message="故事不存在",
             status_code=404,
@@ -94,14 +93,14 @@ async def get_story(
 
     # 权限校验
     if story.user_id != current_user.id:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.FORBIDDEN.code,
             message="无权访问此故事",
             status_code=403,
         )
 
     return UnifyResponse.success(
-        data=StoryDetailResponse.model_validate(story).model_dump(),
+        data=StoryDetailResponse.model_validate(story).model_dump(mode="json"),
     )
 
 
@@ -132,8 +131,8 @@ async def get_my_stories(
     return UnifyResponse.success(
         data=StoryListResponse(
             total=total,
-            items=[item.model_dump() for item in items],
-        ).model_dump(),
+            items=items,
+        ).model_dump(mode="json"),
     )
 
 
@@ -154,7 +153,7 @@ async def update_story(
     story = await StoryRepo.get_by_id(db, story_id)
 
     if not story:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.NOT_FOUND.code,
             message="故事不存在",
             status_code=404,
@@ -162,7 +161,7 @@ async def update_story(
 
     # 权限校验
     if story.user_id != current_user.id:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.FORBIDDEN.code,
             message="无权修改此故事",
             status_code=403,
@@ -179,7 +178,7 @@ async def update_story(
     story = await StoryRepo.update(db, story)
 
     return UnifyResponse.success(
-        data=StoryResponse.model_validate(story).model_dump(),
+        data=StoryResponse.model_validate(story).model_dump(mode="json"),
         message="故事更新成功",
     )
 
@@ -200,7 +199,7 @@ async def delete_story(
     story = await StoryRepo.get_by_id(db, story_id)
 
     if not story:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.NOT_FOUND.code,
             message="故事不存在",
             status_code=404,
@@ -208,7 +207,7 @@ async def delete_story(
 
     # 权限校验
     if story.user_id != current_user.id:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.FORBIDDEN.code,
             message="无权删除此故事",
             status_code=403,
@@ -218,7 +217,7 @@ async def delete_story(
     success = await StoryRepo.delete(db, story_id)
 
     if not success:
-        raise BusinessError(
+        raise BaseError(
             code=APIStatus.SYSTEM_ERROR.code,
             message="删除故事失败",
             status_code=500,

@@ -32,27 +32,27 @@ class RefreshTokenRepo:
         token_hash = TokenUtil.make_hash_token(refresh_token)
         new_token_id = uuid6.uuid7()
         # 使用 CTE：UPSERT token + 更新用户 last_active_at
-        sql = text("""
-        WITH token_upsert AS (
-            INSERT INTO auth.refresh_token (id, user_id, device_id, token_hash, expires_at)
-            VALUES (:id, :user_id, :device_id, :token_hash, :expires_at)
-            ON CONFLICT (user_id, device_id)
-            DO UPDATE SET
-                token_hash = EXCLUDED.token_hash,
-                expires_at = EXCLUDED.expires_at
-            RETURNING id, user_id
-        ),
-        user_update AS (
-            UPDATE auth.user
-            SET last_active_at = NOW()
-            FROM token_upsert
-            WHERE auth.user.id = token_upsert.user_id
-        )
-        SELECT id FROM token_upsert;
-    """)
+        stmt = text("""
+            WITH token_upsert AS (
+                INSERT INTO auth.refresh_token (id, user_id, device_id, token_hash, expires_at)
+                VALUES (:id, :user_id, :device_id, :token_hash, :expires_at)
+                ON CONFLICT (user_id, device_id)
+                DO UPDATE SET
+                    token_hash = EXCLUDED.token_hash,
+                    expires_at = EXCLUDED.expires_at
+                RETURNING id, user_id
+            ),
+            user_update AS (
+                UPDATE auth.user
+                SET last_active_at = NOW()
+                FROM token_upsert
+                WHERE auth.user.id = token_upsert.user_id
+            )
+            SELECT id FROM token_upsert;
+        """)
 
         result = await db.execute(
-            sql,
+            stmt,
             {
                 "id": new_token_id,
                 "user_id": user_id,

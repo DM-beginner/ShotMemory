@@ -5,7 +5,7 @@ from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.base_model import Base, CreatedTimeMixin, IDMixin, UpdatedTimeMixin
-from services.photo_story.models import StoryPhotoM2M
+from services.photo_story.models.story_photo_m2m import PhotoStoryM2M
 
 if TYPE_CHECKING:
     from services.photo_story.models.photo_model import Photo
@@ -19,6 +19,7 @@ class Story(Base, IDMixin, CreatedTimeMixin, UpdatedTimeMixin):
         # 为常用查询字段添加索引
         Index("ix_story_user_id", "user_id"),
         Index("ix_story_created_at", "created_at"),
+        Index("ix_story_title", "title"),
         {
             "schema": "photo_story",
             "comment": "故事表，存储用户创作的图文故事内容",
@@ -49,7 +50,7 @@ class Story(Base, IDMixin, CreatedTimeMixin, UpdatedTimeMixin):
     # 关系定义：一个故事对应多张照片
     photos: Mapped[list["Photo"]] = relationship(
         "Photo",
-        secondary=StoryPhotoM2M.__table__,  # 重点：指定中间表
+        secondary=PhotoStoryM2M.__table__,  # 重点：指定中间表
         back_populates="stories",
         lazy="select",
     )
@@ -58,6 +59,6 @@ class Story(Base, IDMixin, CreatedTimeMixin, UpdatedTimeMixin):
     cover_photo: Mapped["Photo | None"] = relationship(
         "Photo",
         foreign_keys=[cover_photo_id],
-        lazy="select",
+        lazy="selectin",
         post_update=True,  # 解决循环外键问题
     )

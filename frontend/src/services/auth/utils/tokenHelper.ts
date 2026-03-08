@@ -1,15 +1,32 @@
 /**
- * 设备ID管理工具
- * - 用于在登录时标识设备
- * - Token 已改为 HTTPOnly Cookie 方式，前端无法直接访问
+ * 设备 ID 管理工具
+ * - 用于在登录时标识设备边界，防止 Refresh Token 跨设备重放攻击
+ * - 配合 HTTPOnly Cookie 使用
  */
 
-const DEVICE_ID_KEY = "earth_diary_device_id";
+const DEVICE_ID_KEY = "shotmemory_device_id";
 
 /**
- * 生成 UUID v4
+ * 生成极其安全的 UUID v4
  */
-function generateUUID(): string {
+function generateSecureUUID(): string {
+  // 🌟 现代浏览器首选：原生密码学级别的 UUID 生成器
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  // 🛡️ 兼容性降级：使用 getRandomValues 替代不安全的 Math.random()
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+      (
+        Number(c) ^
+        (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))
+      ).toString(16)
+    );
+  }
+
+  // ⚠️ 终极降级（基本不会触发，除非在极老旧或非 HTTPS 环境）
+  console.warn("[ShotMemory Auth] 警告：当前环境不支持 Web Crypto API，退化为伪随机 UUID");
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -26,7 +43,7 @@ export function getDeviceId(): string {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
 
   if (!deviceId) {
-    deviceId = generateUUID();
+    deviceId = generateSecureUUID();
     localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
 
@@ -34,7 +51,10 @@ export function getDeviceId(): string {
 }
 
 /**
- * 清除设备ID（用于完全注销设备）
+ * 清除设备ID
+ * ⚠️ 注意：通常不需要调用此方法！
+ * 因为即使注销登录，这台物理设备依然是这台物理设备。
+ * 除非你想彻底“伪装”成一台新设备，才会清除它。
  */
 export function clearDeviceId(): void {
   localStorage.removeItem(DEVICE_ID_KEY);

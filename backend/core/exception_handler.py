@@ -5,21 +5,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import ORJSONResponse
 from loguru import logger
 
-from core.base_code import APIStatus
 from core.config import settings
-from core.custom_exception import BusinessError
+from core.exceptions import APIStatus, BaseError
 from core.unify_response import UnifyResponse
 
 
-async def business_error_handler(
-    request: Request, exc: BusinessError
-) -> ORJSONResponse:
+async def business_error_handler(request: Request, exc: BaseError) -> ORJSONResponse:
     """
-    处理业务逻辑异常（自定义的 BusinessError）
+    处理业务逻辑异常（自定义的 BaseError）
     这是我们主动抛出的可预期的业务错误
     """
     logger.info(
-        f"BusinessError: {exc.code} - {exc.message} | "
+        f"BaseError: {exc.code} - {exc.message} | "
         f"Path: {request.method} {request.url.path}"
     )
     return UnifyResponse.frontend_error(

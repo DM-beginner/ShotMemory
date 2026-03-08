@@ -1,6 +1,14 @@
 from abc import ABC, abstractmethod
 
 from fastapi import UploadFile
+from pydantic import BaseModel
+
+
+class UploadResult(BaseModel):
+    """文件上传结果"""
+
+    thumbnail_key: str  # 缩略图相对路径
+    object_key: str  # 相对路径（用于数据库存储）
 
 
 class StorageStrategy(ABC):
@@ -11,7 +19,7 @@ class StorageStrategy(ABC):
     """
 
     @abstractmethod
-    async def upload_file(self, file: UploadFile) -> str:
+    async def upload_file(self, file: UploadFile) -> UploadResult:
         """
         上传文件
 
@@ -19,7 +27,21 @@ class StorageStrategy(ABC):
             file: FastAPI 的 UploadFile 对象
 
         Returns:
-            文件的访问 URL
+            UploadResult 对象，包含访问 URL 和 object_key
+        """
+        ...
+
+    @abstractmethod
+    async def upload_bytes(self, data: bytes, suffix: str) -> UploadResult:
+        """
+        直接上传字节流（用于程序生成的文件，如缩略图）
+
+        Args:
+            data: 文件字节内容
+            suffix: 文件扩展名（如 ".webp"），用于生成文件名
+
+        Returns:
+            UploadResult 对象，包含访问 URL 和 object_key
         """
         ...
 

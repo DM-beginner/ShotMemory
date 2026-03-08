@@ -1,6 +1,8 @@
 from typing import Annotated
 
-from fastapi import Depends
+from arq.connections import ArqRedis
+from fastapi import Depends, Request
+from redis import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -34,12 +36,31 @@ async def get_db():
             logger.error(f"Database session error: {e}")
             await session.rollback()
             raise
-        finally:
-            await session.close()
+        # finally:
+        #     await session.close()
+        # async with 自带了退出时自动调用close()的功能
 
 
 # 依赖注入类型别名
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_redis(request: Request) -> ArqRedis:
+    """
+    arq Redis 连接池依赖。
+
+    从 app.state 中取出 lifespan 阶段建立的连接池，
+    与 get_db 风格完全一致，无需模块级全局变量。
+    """
+    return request.app.state.arq_queue
+
+
+RedisDep = Annotated[ArqRedis, Depends(get_redis)]
+
+
+async def get_redis_cache(request: Request) -> Redis:
+    """依赖：获取缓存 Redis"""
+    return request.app.state.redis_cache
 
 
 async def warm_up():

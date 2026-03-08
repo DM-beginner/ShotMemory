@@ -7,18 +7,11 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# 🔥 必须导入所有模型，让 Alembic 能扫描到它们
+import core.all_models  # noqa: F401
 from alembic import context
 from core.base_model import Base
 from core.config import settings
-
-# 🔥 必须导入所有模型，让 Alembic 能扫描到它们
-from services.auth.models.refresh_token_model import RefreshToken
-from services.auth.models.user_model import User
-from services.photo_story.models.photo_model import Photo
-from services.photo_story.models.story_model import Story
-
-# 将导入的名称赋值给 __all__。这告诉 linter：“我是故意导入它的，因为我要把它作为模块的一部分导出。”
-__all__ = ["Photo", "RefreshToken", "Story", "User"]
 
 sys.path.append(dirname(dirname(abspath(__file__))))
 # this is the Alembic Config object, which provides
@@ -39,10 +32,47 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
+# 🔥 架构级魔法：动态提取你代码中用到的所有 Schema
+# 遍历 Base 里的所有表，提取它们的 schema 属性，塞进一个集合 (Set) 里
+target_schemas = {table.schema for table in target_metadata.tables.values()}
+target_schemas.add(
+    None
+)  # 极其关键：必须放行 None，代表 public 模式（Alembic 自己的版本表在这里）
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Alembic 自动生成的黑名单过滤器
+    """
+    if type_ == "table":
+        # 🛡️ PostGIS 和 Tiger Geocoder 生成的系统底表黑名单
+        ignored_tables = {
+            "spatial_ref_sys", "topology", "layer", "county", "faces", "edges",
+            "addrfeat", "bg", "cousub", "featnames", "place", "state", "tract",
+            "zcta5", "addr", "county_lookup", "countysub_lookup", "direction_lookup",
+            "geocode_settings", "geocode_settings_default", "loader_lookuptables",
+            "loader_platform", "loader_variables", "pagc_gaz", "pagc_lex", "pagc_rules",
+            "place_lookup", "secondary_unit_lookup", "state_lookup", "street_type_lookup",
+            "tabblock", "tabblock20", "zip_lookup", "zip_lookup_all", "zip_lookup_base",
+            "zip_state", "zip_state_loc"
+        }
+
+        # 如果是黑名单里的表，直接告诉 Alembic：“装作没看见”
+        if name in ignored_tables:
+            return False
+            
+        # 🛡️ 2. 动态白名单拦截 (彻底告别手动维护！)
+        # 如果数据库里的某个表，它的 Schema 根本不在我们刚才提取的集合里，直接无视！
+        if object.schema not in target_schemas:
+            return False
+
+    # 其他所有正常表，放行！
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -63,6 +93,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -70,7 +101,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+        include_schemas=True,
+        compare_type=True,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

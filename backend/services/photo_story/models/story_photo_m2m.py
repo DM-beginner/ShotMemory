@@ -6,10 +6,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from core.base_model import Base
 
 
-class StoryPhotoM2M(Base):
-    """故事与照片的多对多关联表"""
+class PhotoStoryM2M(Base):
+    """照片与故事的多对多关联表"""
 
-    __tablename__ = "story_photo_m2m"
+    __tablename__ = "photo_story_m2m"
     __table_args__ = (
         PrimaryKeyConstraint("story_id", "photo_id"),
         {"schema": "photo_story", "comment": "故事与照片的多对多关联表"},

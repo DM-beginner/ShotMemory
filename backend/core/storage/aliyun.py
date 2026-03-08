@@ -1,6 +1,6 @@
 from fastapi import UploadFile
 
-from core.storage.interface import StorageStrategy
+from core.storage.interface import StorageStrategy, UploadResult
 
 
 class AliyunOSSStrategy(StorageStrategy):
@@ -41,7 +41,7 @@ class AliyunOSSStrategy(StorageStrategy):
         # auth = oss2.Auth(access_key_id, access_key_secret)
         # self.bucket = oss2.Bucket(auth, endpoint, bucket_name)
 
-    async def upload_file(self, file: UploadFile) -> str:
+    async def upload_file(self, file: UploadFile) -> UploadResult:
         """
         上传文件到阿里云 OSS
 
@@ -49,10 +49,23 @@ class AliyunOSSStrategy(StorageStrategy):
         1. 生成唯一的 object key（如 photos/uuid.jpg）
         2. 读取文件内容: content = await file.read()
         3. 上传到 OSS: self.bucket.put_object(object_key, content)
-        4. 返回 CDN URL: f"{self.cdn_domain}/{object_key}"
+        4. 返回 UploadResult(url=f"{self.cdn_domain}/{object_key}", object_key=object_key)
         """
         raise NotImplementedError(
             "阿里云 OSS 存储尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
+        )
+
+    async def upload_bytes(self, data: bytes, suffix: str) -> UploadResult:
+        """
+        上传字节流到阿里云 OSS（用于程序生成的文件，如 WebP 缩略图）
+
+        TODO: 实现逻辑
+        1. 生成唯一的 object key（如 thumbnails/uuid.webp）
+        2. 上传到 OSS: self.bucket.put_object(object_key, data)
+        3. 返回 UploadResult(url=f"{self.cdn_domain}/{object_key}", object_key=object_key)
+        """
+        raise NotImplementedError(
+            "阿里云 OSS 字节流上传尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
         )
 
     async def delete_file(self, file_url: str) -> bool:

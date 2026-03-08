@@ -2,8 +2,8 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyCookie
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
 
 from core.config import settings
 from core.database import SessionDep
@@ -14,17 +14,23 @@ from services.auth.schemas.token_schema import TokenPayload
 # Cookie 名称常量 (与 auth_router 保持一致)
 ACCESS_TOKEN_COOKIE = "access_token"
 
-# 使用 APIKeyCookie 让 Swagger UI 支持 Cookie 认证
-cookie_scheme = APIKeyCookie(name=ACCESS_TOKEN_COOKIE, auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/token", auto_error=False)
 
 
-async def get_token_from_cookie(
-    token: str | None = Depends(cookie_scheme),
+async def get_token_from_request(
+    request: Request, token: str | None = Depends(oauth2_scheme)
 ) -> str:
     """
-    从 Cookie 中提取 access_token
-    支持 Swagger UI 测试
+    从 Authorization header 或 Cookie 中提取 access_token
+    - 优先从 Authorization header 获取（Swagger UI / API 测试）
+    - 回退到 Cookie（前端应用）
     """
+    # 优先从 Authorization header 获取（Swagger UI）
+    if token:
+        return token
+
+    # 回退到 Cookie（前端应用）
+    token = request.cookies.get(ACCESS_TOKEN_COOKIE)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -34,7 +40,7 @@ async def get_token_from_cookie(
     return token
 
 
-TokenDep = Annotated[str, Depends(get_token_from_cookie)]
+TokenDep = Annotated[str, Depends(get_token_from_request)]
 
 
 async def get_current_user(
@@ -42,7 +48,7 @@ async def get_current_user(
     db: SessionDep,
 ) -> User:
     """
-    解析 Cookie 中的 access_token，获取当前登录用户
+    解析 access_token（从 Authorization header 或 Cookie），获取当前登录用户
     """
     try:
         # 解码 Token

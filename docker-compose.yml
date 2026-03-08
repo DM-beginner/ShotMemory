@@ -1,0 +1,60 @@
+services:
+  redis: 
+    # 这是在 Compose 网络中，这个服务的“内部域名”。
+    # 其他容器（比如你的 FastAPI）可以通过 ping `redis` 直接访问它。
+    image: redis:7.4-alpine  
+    # image 是“镜像”。7.4 是版本号。
+    # alpine 代表它底层使用的是极简版 Linux 系统（Alpine Linux），
+    # 体积只有几 MB，非常符合严苛的性能要求，没有冗余的系统组件。
+
+    container_name: shotmemory_redis
+    # 这是容器跑起来后，你在终端用 `docker ps` 时看到的直观名字，
+    # 方便你一眼认出这是你的照片记忆项目。
+
+    ports:
+      - "6379:6379"
+    # 端口映射。格式是 "宿主机端口:容器内部端口"。
+    # 左边的 6379: 你的 WSL2 (甚至穿透到 Windows) 对外暴露的端口。
+    # 右边的 6379: 容器内部 Redis 默认监听的端口。
+
+    command: redis-server --save 60 1 --loglevel warning
+    # 覆盖 Redis 镜像默认的启动命令。
+    # --save 60 1: 开启 RDB 持久化，“60秒内如果有1个键被修改，就将快照落盘”。
+    # --loglevel warning: 减少无用的日志输出，只打印警告和错误，保持日志干净。
+
+    volumes:
+      - redis_data:/data
+    # 目录挂载（Volume Mapping）。格式是 "外部卷名:容器内部路径"。
+    # Redis 默认会把持久化文件 dump.rdb 写在容器的 /data 目录下。
+    # 我们将容器内的 /data 桥接到外部全局声明的 redis_data 存储卷上。
+
+    restart: unless-stopped
+    # 极其重要的工程配置（保活机制）。
+    # 除非你手动执行 `docker compose down` 停止它，否则无论是 WSL 重启、
+    # Docker 崩溃还是 Redis 内部闪退，Docker 引擎都会自动把它拉起来。
+
+  postgres:
+    # 替换为 PostGIS 官方镜像，基于 PostgreSQL 16 和 PostGIS 3.4
+    # 底层依然是极简的 Alpine，支持空间地理坐标查询
+    image: postgis/postgis:16-3.4-alpine 
+    container_name: shotmemory_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: SZtu@143237
+      POSTGRES_DB: shotmemory
+      TZ: Asia/Shanghai  # 统一时区极其重要，防止数据库与 Python 差 8 小时
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+# 全局存储卷声明
+volumes:
+  redis_data:
+  postgres_data:
+    # 为什么让它“空”着： 
+    # 如果你留空，Docker 会在 Linux 深处的 /var/lib/docker/volumes/ 
+    # 目录下自动为你划拨一块专用的安全空间。
+    # 这块空间不受容器生命周期的影响。即便你把当前的数据库容器彻底删掉，
+    # 明天换个新镜像重新启动，只要它还挂载着这个名字，你之前的数据就全部都在。

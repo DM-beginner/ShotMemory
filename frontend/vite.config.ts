@@ -13,7 +13,9 @@ export default defineConfig({
         changeOrigin: true,
         // 关键：代理会把后端的 Set-Cookie 正确转发给浏览器
       }
-    }
+    },
+    host: '0.0.0.0', // 监听所有网卡，极其关键！
+    port: 5173
   },
   resolve: {
     alias:{

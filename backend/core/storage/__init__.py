@@ -5,7 +5,7 @@ from fastapi import Depends
 
 from core.config import settings
 from core.storage.aliyun import AliyunOSSStrategy
-from core.storage.interface import StorageStrategy
+from core.storage.interface import StorageStrategy, UploadResult
 from core.storage.local import LocalStorageStrategy
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "LocalStorageStrategy",
     "StorageDep",
     "StorageStrategy",
+    "UploadResult",
     "get_storage_service",
 ]
 

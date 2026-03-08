@@ -72,3 +72,11 @@ class AuthResponseData(BaseModel):
 
     message: str
     token_type: str = "bearer"
+
+
+# OAuth2 Token 响应（Swagger UI 标准格式）
+class OAuth2TokenResponse(BaseModel):
+    """OAuth2 标准 Token 响应"""
+
+    access_token: str
+    token_type: str = "bearer"

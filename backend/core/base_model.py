@@ -51,7 +51,7 @@ class UpdatedTimeMixin:
     )
 
 
-class Base(IDMixin, DeclarativeBase):
+class Base(DeclarativeBase):
     """基础模型类（包含 ID）"""
 
     __abstract__ = True

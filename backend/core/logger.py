@@ -18,6 +18,7 @@ def setup_logging():
             serialize=True,  # 输出 JSON 格式
             level="INFO",
             enqueue=True,  # 异步写入，避免阻塞
+            diagnose=False,  # 禁用变量检查，避免超长堆栈输出
         )
     else:
         logger.add(
@@ -25,6 +26,7 @@ def setup_logging():
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
             level="DEBUG",
             enqueue=True,  # 异步写入，避免阻塞
+            diagnose=False,  # 禁用变量检查，避免超长堆栈输出
         )
 
     # 2. 文件输出 (File) - 无论环境，都做一份文件备份（可选，K8s环境通常不需要）
