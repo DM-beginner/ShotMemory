@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { MainLayout } from "@/layouts/MainLayout";
 import { useAuthCheck } from "@/services/auth/utils/tokenHelper";
+import { PhotoDetail } from "@/services/photo/components/PhotoDetail";
 import { PhotoWall } from "@/services/photo/components/PhotoWall";
 
 const App = () => {
@@ -16,7 +17,7 @@ const App = () => {
       </Route>
 
       {/* 2. 独立路由组：不需要 MainLayout 外壳的全屏页面 */}
-      {/* <Route path="/register" element={<Register />} /> */}
+      <Route path="/photo/:id" element={<PhotoDetail />} />
 
       {/* 3. 兜底路由：404 页面重定向 */}
       <Route path="*" element={<Navigate to="/" replace />} />

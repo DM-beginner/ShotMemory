@@ -94,6 +94,11 @@ React 19 + TypeScript with Redux Toolkit for state management.
 
 **Frontend**: Biome with double quotes, semicolons, 2-space indent, 88 char line width. `noUnusedVariables` and `noUnusedImports` are errors. `noConsoleLog` and `noExplicitAny` are warnings.
 
+## Code Quality Principles
+
+- **Backend**: 高并发、高可用、高扩展。充分利用 async/await，代码简洁优雅，使用 Python 3.13+ 现代语法（type union `X | Y`、`dict`/`list` 泛型小写等）。
+- **Frontend**: 组件优先使用 HeroUI，Tailwind CSS class 保持简洁（避免冗余 utility）。使用 React 现代语法和模式（hooks、memo、函数组件，避免 class 组件和过时 API）。
+
 ## Auth Flow
 
 JWT tokens delivered via HTTPOnly cookies (not Authorization headers). Access token (30min) + refresh token (7 days) with device-aware rotation. The frontend's RTK Query `baseQuery` automatically retries with a refreshed token on 401.

@@ -1,6 +1,6 @@
 import { Button } from "@heroui/react";
 import clsx from "clsx";
-import { Disc3, Trash2 } from "lucide-react";
+import { Trash2, Video } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useDeletePhotoMutation, useGetPhotoQuery } from "../redux/api/photoApi";
 import type { Photo } from "../types/photoType";
@@ -9,12 +9,13 @@ import { getOriginalUrl, getPhotoUrl, getVideoUrl } from "../utils/photoUrl";
 interface PhotoCardProps {
   data: Photo;
   width?: number; // masonic 会自动注入此属性，声明出来避免 TS 报错
+  onClick?: () => void;
   onDeleted?: (id: string) => void;
   onUpdated?: (photo: Photo) => void;
 }
 
 export const PhotoCard = memo(
-  ({ data: photo, onDeleted, onUpdated }: PhotoCardProps) => {
+  ({ data: photo, onClick, onDeleted, onUpdated }: PhotoCardProps) => {
     const [imgLoaded, setImgLoaded] = useState(false);
     const [hdLoaded, setHdLoaded] = useState(false);
     const [showVideo, setShowVideo] = useState(false);
@@ -52,18 +53,26 @@ export const PhotoCard = memo(
       }
     };
 
+    const replayVideo = () => {
+      if (videoRef.current) {
+        setShowVideo(true);
+        videoRef.current.currentTime = 0;
+        videoRef.current.play();
+      }
+    };
+
     return (
       <div
         className="group relative w-full cursor-pointer overflow-hidden rounded-xl bg-default-100"
         style={{
           aspectRatio: `${aspectRatio}`,
         }}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onClick?.();
+        }}
         onMouseEnter={() => {
-          if (isLivePhoto && videoRef.current) {
-            setShowVideo(true);
-            videoRef.current.currentTime = 0;
-            videoRef.current.play();
-          }
+          if (isLivePhoto) replayVideo();
         }}
         onMouseLeave={() => {
           setShowVideo(false);
@@ -75,23 +84,16 @@ export const PhotoCard = memo(
       >
         {/* 实况照片图标（点击可重播） */}
         {isLivePhoto && (
-          <div className="absolute top-2 left-2 z-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (videoRef.current) {
-                  setShowVideo(true);
-                  videoRef.current.currentTime = 0;
-                  videoRef.current.play();
-                }
-              }}
-              className="flex cursor-pointer items-center gap-1 rounded-full bg-black/40 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm transition-colors hover:bg-black/60"
-            >
-              <Disc3 className="h-3 w-3" />
-              实况
-            </button>
-          </div>
+          <Button
+            isIconOnly
+            size="md"
+            variant="flat"
+            radius="full"
+            onPress={replayVideo}
+            className="absolute top-2 left-2 z-10"
+          >
+            <Video />
+          </Button>
         )}
 
         {/* Processing 标签 */}
@@ -134,7 +136,7 @@ export const PhotoCard = memo(
           {isLivePhoto && (
             <video
               ref={videoRef}
-              src={getVideoUrl(photo)!}
+              src={getVideoUrl(photo) ?? undefined}
               muted
               playsInline
               preload="none"
@@ -151,21 +153,28 @@ export const PhotoCard = memo(
         <div
           className={clsx(
             "absolute inset-0 flex items-end justify-end p-2",
-            "bg-gradient-to-t from-black/40 via-transparent to-transparent",
-            "opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            "bg-linear-to-t from-black/40 via-transparent to-transparent",
+            "opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+            "pointer-events-none"
           )}
         >
-          <Button
-            isIconOnly
-            size="sm"
-            color="danger"
-            variant="flat"
-            isLoading={isDeleting}
-            onPress={handleDelete}
-            className="translate-y-2 transition-transform duration-300 group-hover:translate-y-0"
+          <div
+            className="pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <Button
+              isIconOnly
+              size="sm"
+              color="danger"
+              variant="flat"
+              isLoading={isDeleting}
+              onPress={handleDelete}
+              className="translate-y-2 transition-transform duration-300 group-hover:translate-y-0"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     );

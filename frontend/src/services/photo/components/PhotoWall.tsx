@@ -3,6 +3,7 @@ import { Masonry } from "masonic";
 import { useCallback, useEffect, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { useGetMyPhotosQuery, useUploadPhotosMutation } from "../redux/api/photoApi";
 import type { Photo } from "../types/photoType";
 import { PhotoCard } from "./PhotoCard";
@@ -11,6 +12,7 @@ const PAGE_SIZE = 25;
 
 export const PhotoWall = () => {
   const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const navigate = useNavigate();
 
   const [offset, setOffset] = useState(0);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -89,16 +91,26 @@ export const PhotoWall = () => {
     []
   );
 
+  const handlePhotoClick = useCallback(
+    (photo: Photo, index: number) => {
+      navigate(`/photo/${photo.id}`, {
+        state: { photos, currentIndex: index },
+      });
+    },
+    [navigate, photos]
+  );
+
   const renderCard = useCallback(
-    ({ data }: { data: Photo }) => (
+    ({ data, index }: { data: Photo; index: number }) => (
       <PhotoCard
         key={data.id}
         data={data}
+        onClick={() => handlePhotoClick(data, index)}
         onDeleted={handlePhotoDeleted}
         onUpdated={handlePhotoUpdated}
       />
     ),
-    [handlePhotoDeleted, handlePhotoUpdated]
+    [handlePhotoDeleted, handlePhotoUpdated, handlePhotoClick]
   );
 
   if (!isFetching && !isError && photos.length === 0) {
