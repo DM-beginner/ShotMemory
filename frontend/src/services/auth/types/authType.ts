@@ -5,10 +5,7 @@
 export type LoginRequest = {
   password: string;
   device_id: string;
-} & (
-  | { email: string; phone?: undefined }
-  | { email?: undefined; phone: string }
-);
+} & ({ email: string; phone?: undefined } | { email?: undefined; phone: string });
 
 /**
  * 注册请求参数
@@ -49,9 +46,20 @@ export interface AuthResponse {
 }
 
 /**
+ * 当前登录用户信息
+ */
+export interface MeResponseData {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  avatar_key?: string;
+}
+
+/**
  * 认证状态
  */
 export interface AuthState {
   isAuthenticated: boolean;
-  isLoading: boolean;
+  isInitializing: boolean;
 }

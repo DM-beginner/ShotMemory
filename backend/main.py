@@ -8,7 +8,7 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
-from redis import Redis
+from redis.asyncio import Redis
 from starlette.middleware.cors import CORSMiddleware
 
 from core.config import settings
@@ -50,8 +50,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # 优雅释放
-    await app.state.redis_cache.close()
-    await app.state.arq_queue.close()
+    if hasattr(app.state, "redis_cache") and app.state.redis_cache is not None:
+        await app.state.redis_cache.close()
+    if hasattr(app.state, "arq_queue") and app.state.arq_queue is not None:
+        await app.state.arq_queue.close()
 
     await close_db()
 

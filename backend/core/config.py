@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     ORIGINS: list[str] = [
         "http://localhost:5173",  # Vite 默认端口
         "http://127.0.0.1:5173",
+        "http://172.25.25.221:5173"
         # 生产环境域名
         # "https://your-domain.com"
     ]

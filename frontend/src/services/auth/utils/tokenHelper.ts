@@ -1,13 +1,13 @@
-/**
- * 设备 ID 管理工具
- * - 用于在登录时标识设备边界，防止 Refresh Token 跨设备重放攻击
- * - 配合 HTTPOnly Cookie 使用
- */
+import { useEffect } from "react";
+import { useDispatch } from "react-redux";
+import { authApi } from "../redux/api/authApi";
+import { setInitializing } from "../redux/slices/authSlice";
 
 const DEVICE_ID_KEY = "shotmemory_device_id";
-
 /**
  * 生成极其安全的 UUID v4
+ * - 用于在登录时标识设备边界，防止 Refresh Token 跨设备重放攻击
+ * - 配合 HTTPOnly Cookie 使用
  */
 function generateSecureUUID(): string {
   // 🌟 现代浏览器首选：原生密码学级别的 UUID 生成器
@@ -26,7 +26,9 @@ function generateSecureUUID(): string {
   }
 
   // ⚠️ 终极降级（基本不会触发，除非在极老旧或非 HTTPS 环境）
-  console.warn("[ShotMemory Auth] 警告：当前环境不支持 Web Crypto API，退化为伪随机 UUID");
+  console.warn(
+    "[ShotMemory Auth] 警告：当前环境不支持 Web Crypto API，退化为伪随机 UUID"
+  );
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -58,4 +60,23 @@ export function getDeviceId(): string {
  */
 export function clearDeviceId(): void {
   localStorage.removeItem(DEVICE_ID_KEY);
+}
+
+export function useAuthCheck() {
+  const dispatch = useDispatch();
+  const [triggerGetMe] = authApi.endpoints.getMe.useLazyQuery();
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await triggerGetMe().unwrap();
+      } catch {
+        // 未登录或 refresh token 已失效，保持默认的未登录状态即可
+      } finally {
+        dispatch(setInitializing(false));
+      }
+    };
+
+    initAuth();
+  }, [dispatch, triggerGetMe]);
 }

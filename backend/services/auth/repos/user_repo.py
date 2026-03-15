@@ -94,6 +94,14 @@ class UserRepo:
         return user
 
     @classmethod
+    async def update_avatar_key(
+        cls, db: AsyncSession, user: User, avatar_key: str
+    ) -> None:
+        """更新用户头像存储路径"""
+        user.avatar_key = avatar_key
+        await db.commit()
+
+    @classmethod
     async def soft_delete_user(cls, db: AsyncSession, user: User) -> None:
         """
         软删除用户（标记为已删除）

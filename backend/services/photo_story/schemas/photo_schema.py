@@ -2,14 +2,19 @@ import math
 import re
 from datetime import datetime
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Any, Final
 from uuid import UUID
 
+from geoalchemy2 import WKBElement
+from geoalchemy2.shape import to_shape
+from loguru import logger
 from pydantic import (
     BaseModel,
     Field,
     ValidationError,
     computed_field,
+    field_validator,
     model_validator,
 )
 
@@ -18,6 +23,23 @@ from services.photo_story.schemas.exif_schema import (
     PickedExif,
     SonyRecipeType,
 )
+
+# ---------------------------------------------------------------------------
+# 路径推导函数：从 object_key 推导衍生文件路径
+# ---------------------------------------------------------------------------
+
+
+def derive_thumbnail_key(object_key: str) -> str:
+    """uploads/originals/abc.heic → uploads/thumbnails/abc.webp"""
+    p = PurePosixPath(object_key)
+    return str(p.parent.parent / "thumbnails" / f"{p.stem}.webp")
+
+
+def derive_video_key(object_key: str) -> str:
+    """uploads/originals/abc.heic → uploads/videos/abc.mp4"""
+    p = PurePosixPath(object_key)
+    return str(p.parent.parent / "videos" / f"{p.stem}.mp4")
+
 
 # 预编译正则常量，大幅提升 CPU 执行效率
 # 1. DECIMAL 模式
@@ -68,21 +90,20 @@ class ImageMetadata(BaseModel):
             # 只替换前两个冒号（日期部分），保留后面的时分秒冒号
             # '2024:03:07 20:06:08' -> '2024-03-07 20:06:08'
             iso_date_part = raw_time.replace(":", "-", 2)
+            iso_str = iso_date_part.replace(" ", "T")
 
             # 第二步：处理时区偏移格式 (确保是 +HH:MM)
             # 某些相机可能只给 "+08"，需补全为 "+08:00"
-            clean_offset = offset.strip()
-            if len(clean_offset) == 3 and (
-                clean_offset.startswith("+") or clean_offset.startswith("-")
-            ):
-                clean_offset += ":00"
+            # 很多老相机不记录时区，offset 可能为 None，此时返回无时区的 naive datetime
+            if offset:
+                clean_offset = offset.strip()
+                if len(clean_offset) == 3 and (
+                    clean_offset.startswith("+") or clean_offset.startswith("-")
+                ):
+                    clean_offset += ":00"
+                iso_str = f"{iso_str}{clean_offset}"
 
-            # 第三步：合成 ISO 8601 字符串
-            # 结果示例: '2024-03-07T20:06:08+08:00'
-            # 注意：T 是标准分隔符，空格也可以被 fromisoformat 识别
-            full_iso_str = f"{iso_date_part.replace(' ', 'T')}{clean_offset}"
-
-            return datetime.fromisoformat(full_iso_str)
+            return datetime.fromisoformat(iso_str)
         except (ValueError, TypeError):
             return None
 
@@ -154,7 +175,8 @@ class ImageMetadata(BaseModel):
                 return model_cls.model_validate(input_data).model_dump(
                     exclude_none=True
                 )
-            except ValidationError:
+            except ValidationError as e:
+                logger.warning(f"{model_cls.__name__} 验证失败: {e.errors()}")
                 return {}
 
         # 1. 提取兜底的基础 EXIF 数据字典
@@ -234,17 +256,15 @@ class PhotoWorkerUpdate(BaseModel):
     Worker 处理完成后回写数据库的专用载体。
     """
 
-    width: int = Field(description="图片宽度(px)")
-    height: int = Field(description="图片高度(px)")
+    width: int | None = Field(description="图片宽度(px)")
+    height: int | None = Field(description="图片高度(px)")
     taken_at: datetime | None = Field(
         default=None, description="拍摄时间（从EXIF提取，无则为上传时间）"
     )
     exif_data: dict | None = Field(
         default=None, description="完整EXIF元数据，无则为 None"
     )
-    thumbnail_key: str | None = Field(
-        default=None, description="WebP 缩略图访问路径"
-    )
+    has_video: bool = Field(default=False, description="是否有关联视频")
     location_wkt: str | None = Field(
         default=None, description="PostGIS WKT 格式坐标，无 GPS 则为 None"
     )
@@ -264,15 +284,42 @@ class PhotoResponse(BaseModel):
     id: UUID = Field(description="照片ID")
     user_id: UUID = Field(description="所属用户ID")
     object_key: str = Field(description="OSS相对路径")
-    thumbnail_key: str | None = Field(default=None, description="WebP 缩略图访问 URL")
-    width: int = Field(description="图片宽度")
-    height: int = Field(description="图片高度")
+    has_video: bool = Field(default=False, exclude=True)
+    width: int | None = Field(description="图片宽度")
+    height: int | None = Field(description="图片高度")
     location_wkt: dict | None = Field(default=None, description="地理位置 {lat, lng}")
     exif_data: dict | None = Field(default=None, description="EXIF元数据")
-    taken_at: datetime = Field(description="拍摄时间")
+    taken_at: datetime | None = Field(description="拍摄时间")
     created_at: datetime = Field(description="上传时间")
 
     model_config = {"from_attributes": True}
+
+    @computed_field(description="从 object_key 推导的缩略图路径")
+    @property
+    def thumbnail_key(self) -> str | None:
+        if self.exif_data is not None:
+            return derive_thumbnail_key(self.object_key)
+        return None
+
+    @computed_field(description="从 object_key 推导的视频路径")
+    @property
+    def video_key(self) -> str | None:
+        if self.has_video:
+            return derive_video_key(self.object_key)
+        return None
+
+    @field_validator("location_wkt", mode="before")
+    @classmethod
+    def parse_location(cls, v: Any) -> dict[str, Any] | None:
+        """将 PostGIS WKBElement 转换为 GeoJSON Point，供 Maplibre-GL-JS 直接消费"""
+        if v is None:
+            return None
+        if isinstance(v, WKBElement):
+            point = to_shape(v)
+            return {"type": "Point", "coordinates": [point.x, point.y]}
+        if isinstance(v, dict):
+            return v
+        return None
 
     @computed_field(description="基于 exif_data 动态推导的隐式状态，绝不落盘")
     @property

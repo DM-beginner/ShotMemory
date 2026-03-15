@@ -46,6 +46,7 @@ class User(Base, IDMixin, CreatedTimeMixin):
     # Optional(已改为|None)会创建nullable=True,没有Optional就是nullable=False
     email: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(20))
+    avatar_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # 安全字段
     hashed_password: Mapped[str | None] = mapped_column(String)

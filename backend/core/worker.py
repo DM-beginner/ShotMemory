@@ -12,7 +12,6 @@ from uuid import UUID
 
 import aiofiles
 from arq.connections import RedisSettings
-from geoalchemy2 import WKTElement
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -73,7 +72,12 @@ def _infer_suffix(object_key: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def parse_photo_exif(ctx: dict[str, Any], photo_id: str, object_key: str) -> None:
+async def parse_photo_exif(
+    ctx: dict[str, Any],
+    photo_id: str,
+    object_key: str,
+    pre_video_key: str | None = None,
+) -> None:
     """
     后台任务：提取照片 EXIF 元数据并生成缩略图，完成后更新数据库记录。
 
@@ -88,8 +92,7 @@ async def parse_photo_exif(ctx: dict[str, Any], photo_id: str, object_key: str) 
     suffix = _infer_suffix(object_key)
 
     metadata = None
-    thumb_bytes: bytes | None = None
-    thumbnail_key: str | None = None
+    has_video = False
 
     # ------------------------------------------------------------------
     # 纯计算阶段：不持有任何 DB 连接
@@ -108,27 +111,91 @@ async def parse_photo_exif(ctx: dict[str, Any], photo_id: str, object_key: str) 
         if not isinstance(thumb_bytes, Exception) and thumb_bytes is not None:
             try:
                 storage = get_storage_service()
-                thumb_result = await storage.upload_bytes(thumb_bytes, suffix=".webp")
-                thumbnail_key = thumb_result.thumbnail_key
+                await storage.upload_bytes(
+                    thumb_bytes, suffix=".webp", stem=Path(object_key).stem
+                )
             except Exception:
                 logger.exception(
                     f"[arq] 缩略图上传失败，photo_id={photo_id}, object_key={object_key}"
                 )
 
-    except Exception:
+    except Exception as e:
         logger.exception(
             f"[arq] EXIF 处理失败，photo_id={photo_id}, object_key={object_key}"
         )
+        # 直接组装失败 DTO 并执行数据库回写，终止执行
+        update_data = PhotoWorkerUpdate(
+            width=None,
+            height=None,
+            taken_at=None,
+            exif_data={"_error": f"read_file_failed: {e!s}"},
+            has_video=False,
+            location_wkt=None,
+        )
+        async with _AsyncSession() as db:
+            await PhotoRepo.update_after_processing(db, UUID(photo_id), update_data)
+        return
     metadata_isvalid = not isinstance(metadata, Exception) and metadata is not None
-    location_wkt: WKTElement | None = None
+    location_wkt: str | None = None
     if (
         metadata_isvalid
         and metadata.latitude is not None
         and metadata.longitude is not None
+        and not (metadata.latitude == 0.0 and metadata.longitude == 0.0)
     ):
-        location_wkt = WKTElement(
-            f"POINT({metadata.longitude} {metadata.latitude})", srid=4326
+        location_wkt = f"POINT({metadata.longitude} {metadata.latitude})"
+
+    # ------------------------------------------------------------------
+    # 动态照片视频处理（统一转码为 H.264 MP4 + faststart）
+    # ------------------------------------------------------------------
+    if pre_video_key:
+        # iOS Live Photo：读取临时上传的 MOV → 转码 → 覆盖上传 MP4 → 删除原始 MOV
+        try:
+            mov_bytes = await _read_file_bytes(pre_video_key)
+            mp4_bytes = await ImageUtil.prepare_video_for_web(
+                mov_bytes, ".mov"
+            )
+            if mp4_bytes:
+                storage = get_storage_service()
+                await storage.upload_bytes(
+                    mp4_bytes,
+                    suffix=".mp4",
+                    subdir="videos",
+                    stem=Path(object_key).stem,
+                )
+                has_video = True
+            await get_storage_service().delete_file(pre_video_key)
+        except Exception:
+            logger.exception(
+                f"[arq] iOS 视频转码失败，photo_id={photo_id}, pre_video_key={pre_video_key}"
+            )
+    elif metadata_isvalid:
+        exif = metadata.exif_data or {}
+        is_motion = (
+            str(exif.get("MotionPhoto")) == "1"
+            or str(exif.get("MicroVideo")) == "1"
         )
+        if is_motion:
+            video_bytes = await ImageUtil.extract_embedded_video(file_bytes, suffix)
+            if video_bytes:
+                try:
+                    mp4_bytes = await ImageUtil.prepare_video_for_web(
+                        video_bytes, ".mp4"
+                    )
+                    if mp4_bytes:
+                        storage = get_storage_service()
+                        await storage.upload_bytes(
+                            mp4_bytes,
+                            suffix=".mp4",
+                            subdir="videos",
+                            stem=Path(object_key).stem,
+                        )
+                        has_video = True
+                except Exception:
+                    logger.exception(
+                        f"[arq] Android 视频处理失败，photo_id={photo_id}, object_key={object_key}"
+                    )
+
     # 5. 组装最终回写 DTO，保证任务总能结束 processing 状态
     # 成功提取到元数据时，None 需转为 {}，明确告诉前端处理已结束但没有可展示 EXIF
 
@@ -139,7 +206,7 @@ async def parse_photo_exif(ctx: dict[str, Any], photo_id: str, object_key: str) 
         exif_data=metadata.exif_data
         if metadata_isvalid
         else {"_error": "worker_processing_failed"},
-        thumbnail_key=thumbnail_key,
+        has_video=has_video,
         location_wkt=location_wkt,
     )
 
@@ -148,11 +215,11 @@ async def parse_photo_exif(ctx: dict[str, Any], photo_id: str, object_key: str) 
     # ------------------------------------------------------------------
     async with _AsyncSession() as db:
         try:
-            # 执行更新。PhotoRepo.update_after_processing 内部只需执行:
-            # stmt = update(Photo).where(Photo.id == photo_id).values(**update_data.model_dump(exclude_unset=True))
             await PhotoRepo.update_after_processing(db, UUID(photo_id), update_data)
         except Exception:
             await db.rollback()
+            raise
+
 
 async def delete_oss_files(ctx: dict[str, Any], keys: list[str]) -> None:
     """
@@ -181,7 +248,8 @@ async def delete_oss_files(ctx: dict[str, Any], keys: list[str]) -> None:
         raise RuntimeError(f"有 {error_count} 个文件清理失败，触发 arq 重试")
 
     logger.info(f"[arq] {len(keys)} 个文件清理完成")
-    
+
+
 # ---------------------------------------------------------------------------
 # WorkerSettings：arq 通过此类启动 Worker 进程
 # ---------------------------------------------------------------------------
@@ -196,7 +264,7 @@ class WorkerSettings:
     """
 
     # 注册的任务函数列表
-    functions = [parse_photo_exif]
+    functions = [parse_photo_exif,delete_oss_files]
 
     # Redis 连接配置（从 settings.REDIS_URL 读取）
     redis_settings = RedisSettings.from_dsn(settings.REDIS_ARQ_URL)

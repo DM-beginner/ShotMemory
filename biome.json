@@ -37,7 +37,7 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 100,
+    "lineWidth": 88,
     "lineEnding": "lf"
   },
   "javascript": {
@@ -56,19 +56,14 @@
     }
   },
   "files": {
-    "include": [
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "*.json"
-    ],
     "ignore": [
-      "node_modules",
-      "dist",
-      "build",
-      ".next",
-      "backend",
-      "package.json",
-      "pnpm-lock.yaml"
+      "**/node_modules",
+      "**/dist",
+      "**/build",
+      "**/.next",
+      "backend/**",
+      "**/package.json",
+      "**/pnpm-lock.yaml"
     ]
   }
 }

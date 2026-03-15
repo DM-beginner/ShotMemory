@@ -7,8 +7,7 @@ from pydantic import BaseModel
 class UploadResult(BaseModel):
     """文件上传结果"""
 
-    thumbnail_key: str  # 缩略图相对路径
-    object_key: str  # 相对路径（用于数据库存储）
+    object_key: str  # 原图相对路径（用于数据库存储）
 
 
 class StorageStrategy(ABC):
@@ -32,13 +31,21 @@ class StorageStrategy(ABC):
         ...
 
     @abstractmethod
-    async def upload_bytes(self, data: bytes, suffix: str) -> UploadResult:
+    async def upload_bytes(
+        self,
+        data: bytes,
+        suffix: str,
+        subdir: str = "thumbnails",
+        stem: str | None = None,
+    ) -> UploadResult:
         """
-        直接上传字节流（用于程序生成的文件，如缩略图）
+        直接上传字节流（用于程序生成的文件，如缩略图、视频）
 
         Args:
             data: 文件字节内容
             suffix: 文件扩展名（如 ".webp"），用于生成文件名
+            subdir: 存储子目录（如 "thumbnails"、"videos"）
+            stem: 指定文件名主干（不含扩展名），为空时自动生成 UUID
 
         Returns:
             UploadResult 对象，包含访问 URL 和 object_key
@@ -46,12 +53,12 @@ class StorageStrategy(ABC):
         ...
 
     @abstractmethod
-    async def delete_file(self, file_url: str) -> bool:
+    async def delete_file(self, object_key: str) -> bool:
         """
         删除文件
 
         Args:
-            file_url: 文件的访问 URL
+            object_key: 文件的存储相对路径
 
         Returns:
             是否删除成功

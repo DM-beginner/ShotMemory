@@ -1,10 +1,9 @@
-import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from geoalchemy2 import Geometry, WKBElement  # PostGIS 支持
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,9 +38,9 @@ class Photo(Base, IDMixin, CreatedTimeMixin):
     # 核心字段：只存相对路径（如 2024/01/xxx.jpg）
     object_key: Mapped[str] = mapped_column(String(500), comment="OSS中的相对路径")
 
-    # 缩略图访问 URL（WebP 格式，上传时由后端生成）
-    thumbnail_key: Mapped[str | None] = mapped_column(
-        String(500), comment="OSS中的缩略图相对路径"
+    # 是否有关联视频（缩略图和视频路径均从 object_key 推导）
+    has_video: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", comment="是否有关联视频"
     )
 
     # 图片尺寸：宽高分离，方便前端计算纵横比
@@ -54,7 +53,9 @@ class Photo(Base, IDMixin, CreatedTimeMixin):
     )
 
     # EXIF 数据（完整的元数据，JSON 格式）
-    exif_data: Mapped[dict | None] = mapped_column(JSONB, comment="完整的EXIF元数据")
+    exif_data: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), comment="完整的EXIF元数据"
+    )
 
     # 时间字段
     taken_at: Mapped[datetime | None] = mapped_column(

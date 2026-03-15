@@ -1,10 +1,11 @@
 import { baseApi } from "@/app/baseApi.ts";
 import type {
-  LoginRequest,
+  ApiResponse,
   AuthResponse,
+  LoginRequest,
+  MeResponseData,
   RegisterRequest,
   RegisterResponseData,
-  ApiResponse
 } from "../../types/authType.ts";
 
 /**
@@ -14,10 +15,6 @@ import type {
  */
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    /**
-     * 用户注册
-     * POST /auth/register
-     */
     register: builder.mutation<ApiResponse<RegisterResponseData>, RegisterRequest>({
       query: (userData) => ({
         url: "/auth/register",
@@ -26,24 +23,15 @@ export const authApi = baseApi.injectEndpoints({
       }),
     }),
 
-    /**
-     * 用户登录
-     * POST /auth/login
-     */
     login: builder.mutation<ApiResponse<AuthResponse>, LoginRequest>({
       query: (credentials) => ({
         url: "/auth/login",
         method: "POST",
         body: credentials,
       }),
-      invalidatesTags: ["Auth"],
+      invalidatesTags: ["Auth", "Photo"],
     }),
 
-    /**
-     * 刷新 Token
-     * POST /auth/refresh
-     * Refresh Token 从 Cookie 中自动读取
-     */
     refreshToken: builder.mutation<ApiResponse<AuthResponse>, void>({
       query: () => ({
         url: "/auth/refresh",
@@ -51,24 +39,41 @@ export const authApi = baseApi.injectEndpoints({
       }),
     }),
 
-    /**
-     * 用户登出
-     * POST /auth/logout
-     * 清除服务端的 Cookie
-     */
     logout: builder.mutation<ApiResponse<AuthResponse>, void>({
       query: () => ({
         url: "/auth/logout",
         method: "POST",
       }),
-      invalidatesTags: ["Auth", "User"],
+      async onQueryStarted(_, { dispatch, queryFulfilled }) {
+        await queryFulfilled;
+        // 清空整个 RTK Query 缓存，防止退出后残留照片等数据
+        dispatch(baseApi.util.resetApiState());
+      },
+    }),
+
+    getMe: builder.query<ApiResponse<MeResponseData>, void>({
+      query: () => ({
+        url: "/auth/me",
+        method: "GET",
+      }),
+      providesTags: ["Auth"],
+    }),
+
+    uploadAvatar: builder.mutation<ApiResponse<MeResponseData>, FormData>({
+      query: (body) => ({
+        url: "/auth/avatar",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Auth"],
     }),
   }),
 });
 
 export const {
-    useRegisterMutation,
-    useLoginMutation,
-    useRefreshTokenMutation,
-    useLogoutMutation
+  useRegisterMutation,
+  useLoginMutation,
+  useRefreshTokenMutation,
+  useLogoutMutation,
+  useUploadAvatarMutation,
 } = authApi;

@@ -73,4 +73,8 @@ class BaseError(Exception):
         data: dict | None = None,
         status_code: int = 400,
     ):
-        super().__init__(code=code, message=message, data=data, status_code=status_code)
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.data = data
+        self.status_code = status_code

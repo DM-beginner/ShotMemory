@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import UUID
 
+from geoalchemy2 import WKTElement
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,16 +95,16 @@ class PhotoRepo:
     @classmethod
     async def get_keys_for_deletion(
         cls, db: AsyncSession, photo_ids: list[UUID], user_id: UUID
-    ) -> list[tuple[str, str | None]]:
+    ) -> list[tuple[str, bool]]:
         """
         在删除前，极速查出所有需要去 OSS 删除的文件 Key。
         严格绑定 user_id 越权校验，防止别人猜到 UUID 删除他人的图。
+        返回 (object_key, has_video) 元组列表，衍生路径由调用方推导。
         """
-        stmt = select(Photo.object_key, Photo.thumbnail_key).where(
+        stmt = select(Photo.object_key, Photo.has_video).where(
             Photo.id.in_(photo_ids), Photo.user_id == user_id
         )
         result = await db.execute(stmt)
-        # 返回类似 [("obj_1.jpg", "thumb_1.webp"), ("obj_2.png", None)]
         return list(result.all())
 
     @classmethod
@@ -138,9 +139,9 @@ class PhotoRepo:
         photo.taken_at = data.taken_at
         photo.width = data.width
         photo.height = data.height
-        photo.thumbnail_key = data.thumbnail_key
+        photo.has_video = data.has_video
         if data.location_wkt:
-            photo.location_wkt = data.location_wkt  # type: ignore[assignment]
+            photo.location_wkt = WKTElement(data.location_wkt, srid=4326)  # type: ignore[assignment]
 
         await db.commit()
         await db.refresh(photo)

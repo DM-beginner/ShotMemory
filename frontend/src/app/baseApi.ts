@@ -1,9 +1,10 @@
+import { authSlice } from "@/services/auth";
 import {
-  createApi,
-  fetchBaseQuery,
   type BaseQueryFn,
   type FetchArgs,
   type FetchBaseQueryError,
+  createApi,
+  fetchBaseQuery,
 } from "@reduxjs/toolkit/query/react";
 
 const host = import.meta.env.VITE_BACKEND_HOST || "";
@@ -31,12 +32,10 @@ const baseQueryWithReauth: BaseQueryFn<
 
   // 检查是否是 401 且 token 过期
   if (result.error && result.error.status === 401) {
-    const errorData = result.error.data as { detail?: string } | undefined;
+    const errorData = result.error.data as { message?: string } | undefined;
 
     // 只有 token 过期才尝试刷新，其他 401 错误直接返回
-    if (errorData?.detail === "Token expired") {
-      console.log("🔄 Access token expired, attempting refresh...");
-
+    if (errorData?.message === "Token expired") {
       // 尝试刷新 token
       const refreshResult = await baseQuery(
         { url: "/auth/refresh", method: "POST" },
@@ -46,13 +45,11 @@ const baseQueryWithReauth: BaseQueryFn<
 
       if (refreshResult.data) {
         // 刷新成功，重试原请求
-        console.log("✅ Token refreshed successfully, retrying request...");
+
         result = await baseQuery(args, api, extraOptions);
       } else {
         // 刷新失败，需要重新登录
-        console.log("❌ Token refresh failed, user needs to re-login");
-        // 可以在这里 dispatch 一个 logout action
-        // api.dispatch(authSlice.actions.logout());
+        api.dispatch(authSlice.actions.resetAuth());
       }
     }
   }
@@ -67,6 +64,6 @@ const baseQueryWithReauth: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["User", "Auth"],
+  tagTypes: ["User", "Auth", "Photo"],
   endpoints: () => ({}),
 });

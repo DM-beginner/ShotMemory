@@ -34,11 +34,6 @@ class LocalStorageStrategy(StorageStrategy):
     async def upload_file(self, file: UploadFile) -> UploadResult:
         """
         将原图保存到 originals/ 子目录
-
-        流程：
-        1. 生成 UUID 文件名（防止冲突）
-        2. 使用 aiofiles 异步写入
-        3. 返回 UploadResult（包含 URL 和 object_key）
         """
         original_name = file.filename or "unknown"
         suffix = Path(original_name).suffix
@@ -51,28 +46,35 @@ class LocalStorageStrategy(StorageStrategy):
             await f.write(content)
 
         object_key = f"{self.upload_dir}/originals/{unique_name}"
-        thumbnail_key = f"{self.base_url}/{object_key}"
 
-        logger.info(f"原图已保存到本地: {file_path} -> {thumbnail_key}")
+        logger.info(f"原图已保存到本地: {file_path}")
 
-        return UploadResult(thumbnail_key=thumbnail_key, object_key=object_key)
+        return UploadResult(object_key=object_key)
 
-    async def upload_bytes(self, data: bytes, suffix: str) -> UploadResult:
+    async def upload_bytes(
+        self,
+        data: bytes,
+        suffix: str,
+        subdir: str = "thumbnails",
+        stem: str | None = None,
+    ) -> UploadResult:
         """
-        将字节流保存到 thumbnails/ 子目录（用于程序生成的文件，如 WebP 缩略图）
+        将字节流保存到指定子目录（如 thumbnails/、videos/）
         """
-        unique_name = f"{uuid.uuid4().hex}{suffix}"
-        file_path = self.thumbnails_dir / unique_name
+        target_dir = self.upload_dir / subdir
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        unique_name = f"{stem}{suffix}" if stem else f"{uuid.uuid4().hex}{suffix}"
+        file_path = target_dir / unique_name
 
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(data)
 
-        object_key = f"{self.upload_dir}/thumbnails/{unique_name}"
-        thumbnail_key = f"{self.base_url}/{object_key}"
+        object_key = f"{self.upload_dir}/{subdir}/{unique_name}"
 
-        logger.info(f"缩略图已保存到本地: {file_path} -> {thumbnail_key}")
+        logger.info(f"文件已保存到本地: {file_path}")
 
-        return UploadResult(thumbnail_key=thumbnail_key, object_key=object_key)
+        return UploadResult(object_key=object_key)
 
     async def delete_file(self, file_url: str) -> bool:
         """
@@ -85,8 +87,7 @@ class LocalStorageStrategy(StorageStrategy):
             # 剥离 base_url 前缀，还原真实相对路径
             # 例: "http://localhost:5683/static/uploads/originals/xxx.jpg"
             #  → "uploads/originals/xxx.jpg"
-            relative = file_url.removeprefix(self.base_url).lstrip("/")
-            file_path = Path(relative)
+            file_path = Path(file_url)
 
             if file_path.exists():
                 file_path.unlink()

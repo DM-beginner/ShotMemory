@@ -86,7 +86,7 @@ class PickedExif(BaseModel):
     ApertureValue: float | str | None = None  # APEX 光圈值
     ShutterSpeedValue: float | str | None = None  # APEX 快门值
     DigitalZoomRatio: float | None = None  # 数码变焦倍率
-    FOV: str | None = None  # 视野角度 (Field of View)
+    FOV: float | str | None = None  # 视野角度 (Field of View)
 
     # ==========================================
     # 模块 5: 拍摄模式与光影
@@ -97,16 +97,16 @@ class PickedExif(BaseModel):
     WhiteBalance: str | int | None = None  # 白平衡 (Auto/Manual)
     LightSource: str | int | None = None  # 光源类型 (D65/Daylight)
     Flash: str | int | None = None  # 闪光灯状态
-    BrightnessValue: float | None = None  # APEX 亮度值 测光表读取的环境亮度值。用于计算曝光补偿。
-    LightValue: float | None = None  # 环境光亮度 (LV)
+    BrightnessValue: float | str | None = None  # APEX 亮度值 测光表读取的环境亮度值。用于计算曝光补偿。
+    LightValue: float | str | None = None  # 环境光亮度 (LV)
     SceneCaptureType: str | int | None = None  # 场景类型 (Landscape/Night)
 
     # ==========================================
     # 模块 6: 空间与技术参数
     # ==========================================
     SensingMethod: str | int | None = None  # 传感器成像方法
-    HyperfocalDistance: str | None = None  # 超焦距距离 (m)
-    CircleOfConfusion: str | None = None  # 弥散圆直径 (mm)
+    HyperfocalDistance: float | str | None = None  # 超焦距距离 (m)
+    CircleOfConfusion: float | str | None = None  # 弥散圆直径 (mm)
 
     # ==========================================
     # 模块 7: 动态照片与计算摄影
@@ -115,6 +115,7 @@ class PickedExif(BaseModel):
     MotionPhotoVersion: str | int | None = None  # 动态照片协议版本
     MotionPhotoPresentationTimestampUs: int | str | None = None  # 视频时间戳
     MicroVideo: int | str | None = None  # 微视频标记 (Google)
+    ContentIdentifier: str | None = None  # Apple Live Photo 关联 UUID
     GainMap: bool | None = False  # HDR 增益图标识 (Ultra HDR)
     MPImageType: str | int | None = None  # 多图封装类型
     NumberOfImages: int | None = None  # 容器内图像数量
@@ -209,5 +210,16 @@ class PickedExif(BaseModel):
         if isinstance(v, float) and 0 < v < 1:
             return f"1/{round(1 / v)}"
         return str(v)
+
+    @field_validator("BrightnessValue", "LightValue", mode="before")
+    @classmethod
+    def sanitize_float_field(cls, v: Any) -> float | None:
+        """过滤 ExifTool 返回的 'undef' / 'inf' 等无效值"""
+        if v is None or (isinstance(v, str) and v.strip().lower() in {"undef", "inf", "-inf", ""}):
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
 

@@ -55,12 +55,18 @@ class AliyunOSSStrategy(StorageStrategy):
             "阿里云 OSS 存储尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
         )
 
-    async def upload_bytes(self, data: bytes, suffix: str) -> UploadResult:
+    async def upload_bytes(
+        self,
+        data: bytes,
+        suffix: str,
+        subdir: str = "thumbnails",
+        stem: str | None = None,
+    ) -> UploadResult:
         """
-        上传字节流到阿里云 OSS（用于程序生成的文件，如 WebP 缩略图）
+        上传字节流到阿里云 OSS（用于程序生成的文件，如 WebP 缩略图、视频）
 
         TODO: 实现逻辑
-        1. 生成唯一的 object key（如 thumbnails/uuid.webp）
+        1. 生成唯一的 object key（如 thumbnails/uuid.webp 或 videos/uuid.mp4）
         2. 上传到 OSS: self.bucket.put_object(object_key, data)
         3. 返回 UploadResult(url=f"{self.cdn_domain}/{object_key}", object_key=object_key)
         """
@@ -68,14 +74,13 @@ class AliyunOSSStrategy(StorageStrategy):
             "阿里云 OSS 字节流上传尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
         )
 
-    async def delete_file(self, file_url: str) -> bool:
+    async def delete_file(self, object_key: str) -> bool:
         """
         从阿里云 OSS 删除文件
 
         TODO: 实现逻辑
-        1. 从 URL 解析 object key
-        2. 删除对象: self.bucket.delete_object(object_key)
-        3. 返回删除结果
+        1. 删除对象: self.bucket.delete_object(object_key)
+        2. 返回删除结果
         """
         raise NotImplementedError(
             "阿里云 OSS 删除尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"

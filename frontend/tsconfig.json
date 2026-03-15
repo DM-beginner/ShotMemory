@@ -5,3 +5,12 @@
     { "path": "./tsconfig.node.json" }
   ]
 }
+/* 
+  在你的项目中，其实存在着两种完全不同的运行环境：
+  Node.js 环境：负责打包、构建你的项目（比如 vite.config.ts 是由 Node.js 运行的）。
+  浏览器（Browser）环境：负责运行你写的 React 代码（比如 src/ 下的代码，需要操作 DOM）。
+  为了让 TypeScript 能够精准地对这两种环境进行静态检查（不互相污染），Vite 把配置拆成了三个：
+*/
+
+// tsconfig.node.json：构建工具环境 (The Node Context)，这个文件专门为你根目录下的构建脚本（如 vite.config.ts）服务。
+// tsconfig.app.json：前端业务环境 (The Browser Context)，这个文件是为你 src/ 目录下的 React 业务代码服务的。

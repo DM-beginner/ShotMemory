@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
+from typing import Final
 from uuid import UUID, uuid4
-
+from fastapi import Response, UploadFile
 import jwt
 from fastapi import APIRouter, Cookie, Depends
 from fastapi.responses import ORJSONResponse
@@ -11,18 +12,22 @@ from core.base_schema import BaseResponse
 from core.config import settings
 from core.database import SessionDep
 from core.exceptions import APIStatus, BaseError
+from core.storage import StorageDep
 from core.unify_response import UnifyResponse
 from services.auth.models.refresh_token_model import RefreshToken
 from services.auth.models.user_model import User
 from services.auth.repos import RefreshTokenRepo, UserRepo
+from services.auth.routers.user_deps import CurrentUser
 from services.auth.schemas import (
     AuthResponseData,
     LoginRequest,
+    MeResponseData,
     OAuth2TokenResponse,
     RegisterRequest,
     RegisterResponseData,
     TokenPayload,
 )
+from services.photo_story.utils.image_util import ImageUtil
 
 router = APIRouter(tags=["auth"], prefix="/auth")
 
@@ -32,7 +37,7 @@ REFRESH_TOKEN_COOKIE = "refresh_token"
 
 
 def _set_auth_cookies(
-    response: ORJSONResponse, access_token: str, refresh_token: str
+    response: Response, access_token: str, refresh_token: str
 ) -> None:
     """
     设置认证相关的 HTTPOnly Cookie
@@ -64,7 +69,7 @@ def _set_auth_cookies(
     )
 
 
-def _clear_auth_cookies(response: ORJSONResponse) -> None:
+def _clear_auth_cookies(response: Response) -> None:
     """清除认证相关的 Cookie"""
     response.delete_cookie(
         key=ACCESS_TOKEN_COOKIE,
@@ -451,3 +456,88 @@ async def delete_account(
             message=APIStatus.TOKEN_INVALID.msg,
             status_code=401,
         ) from None
+
+
+@router.get("/me", response_model=BaseResponse[MeResponseData])
+async def get_me(current_user: CurrentUser):
+    """
+    获取当前登录用户信息
+    - 前端应用启动时调用，用于恢复登录状态
+    - access_token 过期时，baseQuery 会自动刷新后重试
+    """
+    response_data = MeResponseData(
+        id=str(current_user.id),
+        name=current_user.name,
+        email=current_user.email,
+        phone=current_user.phone,
+        avatar_key=current_user.avatar_key,
+    )
+    return UnifyResponse.success(
+        data=response_data.model_dump(), message="获取用户信息成功"
+    )
+
+
+_AVATAR_ALLOWED_TYPES: Final[dict[str, str]] = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/heic": ".heic",  # Apple iOS 默认格式
+    "image/heif": ".heif",  # 高效图像文件通用格式
+    "image/avif": ".avif",  # 现代高压缩比 Web 格式
+}
+_AVATAR_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+@router.put("/avatar", response_model=BaseResponse[MeResponseData])
+async def upload_avatar(
+    file: UploadFile,
+    current_user: CurrentUser,
+    db: SessionDep,
+    storage: StorageDep,
+):
+    """
+    上传/更新用户头像
+    - 接受 JPEG / PNG / WebP，最大 5 MB
+    - 自动缩放为 200px WebP 缩略图
+    - 旧头像会被自动删除
+    """
+    # 1. 校验文件类型
+    if file.content_type not in _AVATAR_ALLOWED_TYPES:
+        raise BaseError(
+            code=APIStatus.FILE_TYPE_NOT_ALLOWED.code,
+            message=f"仅支持 {', '.join(_AVATAR_ALLOWED_TYPES.keys())} 格式",
+            status_code=400,
+        )
+
+    # 2. 读取并校验大小
+    raw = await file.read()
+    if len(raw) > _AVATAR_MAX_SIZE:
+        raise BaseError(
+            code=APIStatus.FILE_TOO_LARGE.code,
+            message="头像文件不能超过 50 MB",
+            status_code=400,
+        )
+
+    # 3. 生成 200px WebP 缩略图
+    avatar_bytes = await ImageUtil.generate_thumbnail(raw, max_side=200)
+
+    # 4. 上传到存储
+    result = await storage.upload_bytes(avatar_bytes, ".webp")
+
+    # 5. 删除旧头像（如有）
+    old_key = current_user.avatar_key
+    if old_key:
+        await storage.delete_file(old_key)
+
+    # 6. 更新数据库
+    await UserRepo.update_avatar_key(db, current_user, result.object_key)
+
+    # 7. 返回更新后的用户信息
+    response_data = MeResponseData(
+        id=str(current_user.id),
+        name=current_user.name,
+        email=current_user.email,
+        phone=current_user.phone,
+        avatar_key=result.object_key,
+    )
+    return UnifyResponse.success(data=response_data.model_dump(), message="头像更新成功")
