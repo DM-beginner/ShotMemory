@@ -47,12 +47,13 @@ class Story(Base, IDMixin, CreatedTimeMixin, UpdatedTimeMixin):
 
     # 时间字段由 CreatedTimeMixin 和 UpdatedTimeMixin 提供
 
-    # 关系定义：一个故事对应多张照片
+    # 关系定义：一个故事对应多张照片（按 sort_order 排序）
     photos: Mapped[list["Photo"]] = relationship(
         "Photo",
-        secondary=PhotoStoryM2M.__table__,  # 重点：指定中间表
+        secondary=PhotoStoryM2M.__table__,
         back_populates="stories",
         lazy="select",
+        order_by=PhotoStoryM2M.sort_order,
     )
 
     # 封面照片关系（单独定义，避免循环引用）

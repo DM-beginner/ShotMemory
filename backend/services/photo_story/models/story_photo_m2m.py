@@ -23,3 +23,6 @@ class PhotoStoryM2M(Base):
         ForeignKey("photo_story.photo.id", ondelete="CASCADE"),
         primary_key=True,
     )
+    sort_order: Mapped[int] = mapped_column(
+        default=0, server_default="0", comment="排序序号"
+    )

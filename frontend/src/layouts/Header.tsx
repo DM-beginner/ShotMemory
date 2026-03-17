@@ -14,11 +14,14 @@ import {
   NavbarBrand,
   NavbarContent,
   NavbarItem,
+  Tab,
+  Tabs,
 } from "@heroui/react";
 import { Camera, LogOut, Moon, Sun, Upload } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export const Header = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -30,6 +33,14 @@ export const Header = () => {
   const [logoutMutation] = useLogoutMutation();
   const [uploadAvatar] = useUploadAvatarMutation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const activeTab = location.pathname.startsWith("/story")
+    ? "story"
+    : location.pathname.startsWith("/globe")
+      ? "globe"
+      : "photo";
 
   const { data: meData } = authApi.useGetMeQuery(undefined, { skip: !isAuthenticated });
   const avatarUrl = getAvatarUrl(meData?.data?.avatar_key);
@@ -72,6 +83,23 @@ export const Header = () => {
             )}
           </NavbarItem>
         </NavbarBrand>
+        <NavbarContent className="hidden sm:flex" justify="center">
+          <NavbarItem>
+            <Tabs
+              selectedKey={activeTab}
+              onSelectionChange={(key) => {
+                const routes = { photo: "/", globe: "/globe", story: "/story" };
+                navigate(routes[key as keyof typeof routes] ?? "/");
+              }}
+              variant="underlined"
+              aria-label="导航"
+            >
+              <Tab key="photo" title="照片" />
+              <Tab key="globe" title="地球" />
+              <Tab key="story" title="故事" />
+            </Tabs>
+          </NavbarItem>
+        </NavbarContent>
         <NavbarContent justify="end" className="gap-4">
           {isAuthenticated && (
             <NavbarItem>
