@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
 from pwdlib import PasswordHash
@@ -57,6 +57,7 @@ def create_token(
         "iat": now,  # Issued At (签发时间)
         "sub": str(subject),  # sub 存 user_id
         "type": token_type,  # 重要：区分 token 类型
+        "jti": str(uuid4()),  # JWT ID，确保同一秒并发签发的 Token 仍唯一
     }
 
     encoded_jwt = jwt.encode(

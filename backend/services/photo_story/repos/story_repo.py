@@ -67,6 +67,8 @@ class StoryRepo:
     async def update(cls, db: AsyncSession, story: Story) -> Story:
         """更新故事记录"""
         await db.commit()
+        await db.refresh(story)
+        # 单独加载 cover_photo 关系（refresh 不会自动加载 relationship）
         await db.refresh(story, attribute_names=["cover_photo"])
         return story
 

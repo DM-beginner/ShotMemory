@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     ORIGINS: list[str] = [
         "http://localhost:5173",  # Vite 默认端口
         "http://127.0.0.1:5173",
-        "http://172.25.25.221:5173"
+        "http://172.25.25.221:5173",
         # 生产环境域名
         # "https://your-domain.com"
     ]
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # Redis 配置
     REDIS_CACHE_URL: str = "redis://127.0.0.1:6379/0"
     REDIS_ARQ_URL: str = "redis://127.0.0.1:6379/1"
-    
+
     # JWT 配置（SECRET_KEY）
     SECRET_KEY: str = "fake"
     ALGORITHM: str = "HS256"
@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     OSS_BUCKET_NAME: str = ""
     OSS_ENDPOINT: str = ""
     OSS_CDN_DOMAIN: str = ""
+
+    # Worker 配置
+    WORKER_MAX_HEAVY_TASKS: int = 3  # 同时执行重计算（Pillow/ffmpeg）的最大任务数
 
     # Cookie 配置
     COOKIE_DOMAIN: str | None = None  # 开发环境设为 None，生产环境设为你的域名

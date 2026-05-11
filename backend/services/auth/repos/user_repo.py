@@ -3,11 +3,57 @@ from uuid import UUID
 
 from pydantic import EmailStr
 from sqlalchemy import or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import SessionDep
 from core.security import get_password_hash
+from services.auth.exceptions import UserAlreadyRegisteredError
 from services.auth.models.user_model import User
+
+
+_USER_UNIQUE_CONSTRAINT_FIELDS = {
+    "ix_user_email_active": "邮箱",
+    "ix_user_phone_active": "手机号",
+    "ix_user_name_active": "用户名",
+}
+
+
+def _iter_exception_chain(exc: BaseException):
+    """Walk DBAPI/driver exception wrappers without binding to one driver."""
+    seen: set[int] = set()
+    stack: list[BaseException] = [exc]
+    while stack:
+        current = stack.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        yield current
+
+        for attr in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attr, None)
+            if isinstance(nested, BaseException):
+                stack.append(nested)
+
+
+def _extract_constraint_name(exc: IntegrityError) -> str | None:
+    """Prefer structured constraint metadata; keep text fallback local to repo."""
+    for candidate in _iter_exception_chain(exc):
+        constraint_name = getattr(candidate, "constraint_name", None)
+        if constraint_name:
+            return constraint_name
+
+        diag = getattr(candidate, "diag", None)
+        constraint_name = getattr(diag, "constraint_name", None)
+        if constraint_name:
+            return constraint_name
+
+    error_text = str(getattr(exc, "orig", exc))
+    for constraint_name in _USER_UNIQUE_CONSTRAINT_FIELDS:
+        if constraint_name in error_text:
+            return constraint_name
+
+    return None
 
 
 class UserRepo:
@@ -89,7 +135,16 @@ class UserRepo:
         )
 
         db.add(user)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            constraint_name = _extract_constraint_name(exc)
+            field = _USER_UNIQUE_CONSTRAINT_FIELDS.get(constraint_name)
+            if field:
+                raise UserAlreadyRegisteredError(field) from exc
+            raise
+
         await db.refresh(user)
         return user
 

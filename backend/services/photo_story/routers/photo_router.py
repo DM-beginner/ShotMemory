@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
 
-from fastapi import APIRouter, Body, UploadFile
+from fastapi import APIRouter, UploadFile
 from loguru import logger
 
 from core.base_schema import BaseResponse
@@ -14,6 +14,7 @@ from core.unify_response import UnifyResponse
 from services.auth.routers.user_deps import CurrentUser
 from services.photo_story.repos.photo_repo import PhotoRepo
 from services.photo_story.schemas.photo_schema import (
+    BatchDeleteRequest,
     PhotoListResponse,
     PhotoResponse,
     PhotoUpdateRequest,
@@ -348,9 +349,7 @@ async def delete_photo(
 
 @router.post("/batch-delete", response_model=BaseResponse[dict])
 async def batch_delete_photos(
-    photo_ids: list[UUID] = Body(
-        ..., max_length=50, description="要删除的照片ID列表，单次最多50张"
-    ),
+    request: BatchDeleteRequest,
     db: SessionDep = None,
     arq_redis: RedisDep = None,  # 注入 arq_redis 队列客户端
     current_user: CurrentUser = None,
@@ -362,6 +361,7 @@ async def batch_delete_photos(
     - 极速短事务：在数据库层利用 IN 语句一次性删除
     - 异步清理：将 OSS 文件 keys 投递给 arq 队列，保证绝对清理且具备重试机制
     """
+    photo_ids = request.photo_ids
     if not photo_ids:
         return UnifyResponse.success(message="没有需要删除的照片")
 

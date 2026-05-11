@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import UploadFile
 
 from core.storage.interface import StorageStrategy, UploadResult
@@ -84,4 +86,17 @@ class AliyunOSSStrategy(StorageStrategy):
         """
         raise NotImplementedError(
             "阿里云 OSS 删除尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
+        )
+
+    async def download_to_file(self, object_key: str) -> Path:
+        """
+        从阿里云 OSS 流式下载文件到临时文件
+
+        TODO: 实现逻辑
+        1. 创建临时文件
+        2. 使用 self.bucket.get_object_to_file(object_key, tmp_path) 流式下载
+        3. 返回临时文件 Path（调用方负责清理）
+        """
+        raise NotImplementedError(
+            "阿里云 OSS 下载尚未实现，请先安装 oss2 (uv add oss2) 并补充实现代码"
         )

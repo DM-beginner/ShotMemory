@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import aiofiles
 from arq.connections import RedisSettings
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -40,25 +39,26 @@ _AsyncSession = async_sessionmaker[AsyncSession](
     expire_on_commit=False,
 )
 
+# ---------------------------------------------------------------------------
+# 并发控制：限制同时进行重计算（Pillow 解压 + ffmpeg 转码）的任务数
+# ---------------------------------------------------------------------------
+
+_heavy_sem = asyncio.Semaphore(settings.WORKER_MAX_HEAVY_TASKS)
+
 
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
 
 
-async def _read_file_bytes(object_key: str) -> bytes:
+async def _resolve_file_path(object_key: str) -> Path:
     """
-    根据 object_key 读取原图字节流。
-    - 开发环境：object_key 即本地相对路径（如 uploads/originals/xxx.jpg）
-    - 生产环境：通过 OSS SDK 下载（待 AliyunOSSStrategy 实现后扩展）
+    将 object_key 解析为本地可访问的文件路径。
+    - dev 模式：object_key 即本地路径，直接返回
+    - prod 模式：通过 storage.download_to_file() 流式下载到本地
     """
-    if settings.ENV == "dev":
-        async with aiofiles.open(object_key, "rb") as f:
-            return await f.read()
-
-    # 生产环境：从 OSS 下载原图（object_key 为 OSS 对象路径）
-    # 此处预留扩展点，待 AliyunOSSStrategy 补充 download_bytes 方法后实现
-    raise NotImplementedError(f"生产环境原图下载尚未实现，object_key={object_key}")
+    storage = get_storage_service()
+    return await storage.download_to_file(object_key)
 
 
 def _infer_suffix(object_key: str) -> str:
@@ -81,7 +81,6 @@ async def parse_photo_exif(
     """
     后台任务：提取照片 EXIF 元数据并生成缩略图，完成后更新数据库记录。
 
-    - 数据库中不再存在物理的 `status` 字段。
     - 成功时：回写真实的 exif_data 字典。
     - 无数据时：回写空字典 `{}`。
     - 失败时：回写错误标识字典 `{"_error": "..."}`。
@@ -95,35 +94,34 @@ async def parse_photo_exif(
     has_video = False
 
     # ------------------------------------------------------------------
-    # 纯计算阶段：不持有任何 DB 连接
+    # 纯计算阶段：不持有任何 DB 连接，Semaphore 控制并发
     # ------------------------------------------------------------------
     try:
-        # 1. 读取原图字节流
-        file_bytes = await _read_file_bytes(object_key)
+        path = await _resolve_file_path(object_key)
 
-        metadata, thumb_bytes = await asyncio.gather(
-            ImageUtil.extract_metadata(file_bytes, suffix=suffix),
-            ImageUtil.generate_thumbnail(file_bytes),
-            return_exceptions=True,
-        )
+        async with _heavy_sem:
+            metadata, thumb_bytes = await asyncio.gather(
+                ImageUtil.extract_metadata_from_path(path),
+                ImageUtil.generate_thumbnail_from_path(path),
+                return_exceptions=True,
+            )
 
-        # 仅当缩略图成功生成时才执行上传
-        if not isinstance(thumb_bytes, Exception) and thumb_bytes is not None:
-            try:
-                storage = get_storage_service()
-                await storage.upload_bytes(
-                    thumb_bytes, suffix=".webp", stem=Path(object_key).stem
-                )
-            except Exception:
-                logger.exception(
-                    f"[arq] 缩略图上传失败，photo_id={photo_id}, object_key={object_key}"
-                )
+            # 仅当缩略图成功生成时才执行上传
+            if not isinstance(thumb_bytes, Exception) and thumb_bytes is not None:
+                try:
+                    storage = get_storage_service()
+                    await storage.upload_bytes(
+                        thumb_bytes, suffix=".webp", stem=Path(object_key).stem
+                    )
+                except Exception:
+                    logger.exception(
+                        f"[arq] 缩略图上传失败，photo_id={photo_id}, object_key={object_key}"
+                    )
 
     except Exception as e:
         logger.exception(
             f"[arq] EXIF 处理失败，photo_id={photo_id}, object_key={object_key}"
         )
-        # 直接组装失败 DTO 并执行数据库回写，终止执行
         update_data = PhotoWorkerUpdate(
             width=None,
             height=None,
@@ -135,6 +133,7 @@ async def parse_photo_exif(
         async with _AsyncSession() as db:
             await PhotoRepo.update_after_processing(db, UUID(photo_id), update_data)
         return
+
     metadata_isvalid = not isinstance(metadata, Exception) and metadata is not None
     location_wkt: str | None = None
     if (
@@ -149,12 +148,11 @@ async def parse_photo_exif(
     # 动态照片视频处理（统一转码为 H.264 MP4 + faststart）
     # ------------------------------------------------------------------
     if pre_video_key:
-        # iOS Live Photo：读取临时上传的 MOV → 转码 → 覆盖上传 MP4 → 删除原始 MOV
+        # iOS Live Photo：直接读 MOV 文件路径 → 转码 → 覆盖上传 MP4 → 删除原始 MOV
         try:
-            mov_bytes = await _read_file_bytes(pre_video_key)
-            mp4_bytes = await ImageUtil.prepare_video_for_web(
-                mov_bytes, ".mov"
-            )
+            mov_path = await _resolve_file_path(pre_video_key)
+            async with _heavy_sem:
+                mp4_bytes = await ImageUtil.prepare_video_from_path(mov_path, ".mov")
             if mp4_bytes:
                 storage = get_storage_service()
                 await storage.upload_bytes(
@@ -172,16 +170,17 @@ async def parse_photo_exif(
     elif metadata_isvalid:
         exif = metadata.exif_data or {}
         is_motion = (
-            str(exif.get("MotionPhoto")) == "1"
-            or str(exif.get("MicroVideo")) == "1"
+            str(exif.get("MotionPhoto")) == "1" or str(exif.get("MicroVideo")) == "1"
         )
         if is_motion:
-            video_bytes = await ImageUtil.extract_embedded_video(file_bytes, suffix)
+            # Android 动态照片：mmap 内存映射提取嵌入视频
+            video_bytes = await ImageUtil.extract_embedded_video_from_path(path, suffix)
             if video_bytes:
                 try:
-                    mp4_bytes = await ImageUtil.prepare_video_for_web(
-                        video_bytes, ".mp4"
-                    )
+                    async with _heavy_sem:
+                        mp4_bytes = await ImageUtil.prepare_video_for_web(
+                            video_bytes, ".mp4"
+                        )
                     if mp4_bytes:
                         storage = get_storage_service()
                         await storage.upload_bytes(
@@ -196,9 +195,7 @@ async def parse_photo_exif(
                         f"[arq] Android 视频处理失败，photo_id={photo_id}, object_key={object_key}"
                     )
 
-    # 5. 组装最终回写 DTO，保证任务总能结束 processing 状态
-    # 成功提取到元数据时，None 需转为 {}，明确告诉前端处理已结束但没有可展示 EXIF
-
+    # 组装最终回写 DTO
     update_data = PhotoWorkerUpdate(
         width=metadata.width if metadata_isvalid else 0,
         height=metadata.height if metadata_isvalid else 0,
@@ -244,7 +241,6 @@ async def delete_oss_files(ctx: dict[str, Any], keys: list[str]) -> None:
             logger.warning(f"[arq] 文件清理失败 [key={keys[i]}]: {result!s}")
 
     if error_count > 0:
-        # 如果有失败的，抛出异常让 arq 触发重试机制（根据配置重试几次）
         raise RuntimeError(f"有 {error_count} 个文件清理失败，触发 arq 重试")
 
     logger.info(f"[arq] {len(keys)} 个文件清理完成")
@@ -264,7 +260,7 @@ class WorkerSettings:
     """
 
     # 注册的任务函数列表
-    functions = [parse_photo_exif,delete_oss_files]
+    functions = [parse_photo_exif, delete_oss_files]
 
     # Redis 连接配置（从 settings.REDIS_URL 读取）
     redis_settings = RedisSettings.from_dsn(settings.REDIS_ARQ_URL)
@@ -280,11 +276,6 @@ class WorkerSettings:
 
     # Worker 健康检查间隔（秒）
     health_check_interval = 30
-
-    # 定时任务（按需启用，示例：每天凌晨清理孤儿任务）
-    # cron_jobs = [
-    #     cron(cleanup_orphan_jobs, hour=3, minute=0),
-    # ]
 
     @staticmethod
     async def on_startup(ctx: dict[str, Any]) -> None:

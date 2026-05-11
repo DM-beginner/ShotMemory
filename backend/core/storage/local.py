@@ -76,6 +76,10 @@ class LocalStorageStrategy(StorageStrategy):
 
         return UploadResult(object_key=object_key)
 
+    async def download_to_file(self, object_key: str) -> Path:
+        """本地存储：object_key 即本地路径，直接返回"""
+        return Path(object_key)
+
     async def delete_file(self, file_url: str) -> bool:
         """
         删除本地文件

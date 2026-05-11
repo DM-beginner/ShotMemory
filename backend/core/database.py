@@ -13,9 +13,9 @@ engine = create_async_engine(
     echo=settings.ENV == "dev",
     pool_pre_ping=True,  # 每次从池中取连接时先测试连接是否有效
     pool_recycle=3600,  # 1小时后回收连接，防止数据库主动断开
-    pool_size=15,  # 连接池大小
-    max_overflow=10,  # 超出pool_size后最多再创建10个连接
-    pool_timeout=30,  # 获取连接的超时时间（秒）
+    pool_size=50,  # 提升至 50（从 15），容纳高并发
+    max_overflow=20,  # 提升至 20（从 10），最多总 70 个连接
+    pool_timeout=10,  # 降低至 10s，快速失败而非堆积
 )
 
 # [AsyncSession]泛型参数确保了类型安全，避免隐式类型转换和潜在的运行时错误。
@@ -29,6 +29,8 @@ AsyncSessionLocal = async_sessionmaker[AsyncSession](
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:
+            # 设置查询超时，防止慢查询阻塞连接池（5 秒）
+            await session.execute(text("SET statement_timeout = 5000"))
             yield session
         except Exception as e:
             from loguru import logger

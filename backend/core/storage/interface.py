@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from fastapi import UploadFile
 from pydantic import BaseModel
@@ -49,6 +50,19 @@ class StorageStrategy(ABC):
 
         Returns:
             UploadResult 对象，包含访问 URL 和 object_key
+        """
+        ...
+
+    @abstractmethod
+    async def download_to_file(self, object_key: str) -> Path:
+        """
+        将 object_key 对应的文件下载到本地可访问的路径。
+
+        - 本地存储：object_key 即本地路径，直接返回 Path
+        - OSS 存储：流式下载到临时文件，返回临时文件 Path
+
+        Returns:
+            本地文件的 Path 对象
         """
         ...
 

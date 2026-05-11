@@ -23,9 +23,7 @@ class RefreshToken(Base, IDMixin, CreatedTimeMixin):
         {"schema": "auth", "comment": "Refresh Token 存储表，支持多端登录"},
     )
 
-    # 关联用户 (级联删除：用户注销，Token 自动清理)
-    # unique=True: 一个用户只能有一个 refresh_token，用于 UPSERT 冲突检测
-    # ondelete="CASCADE" (级联删除) -- 用户注销，Token 自动清理
+    # 关联用户。唯一性由 (user_id, device_id) 组合约束保证，支持多设备登录。
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("auth.user.id", ondelete="CASCADE"), index=True
     )
@@ -39,7 +37,7 @@ class RefreshToken(Base, IDMixin, CreatedTimeMixin):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # created_at 由 CreatedTimeMixin 提供
 
-    device_id: Mapped[uuid.UUID] = mapped_column(unique=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(index=True)
 
     # 反向关联 (方便通过 user.refresh_tokens 查询)
     # 字符串引用 "User" 避免循环导入

@@ -340,6 +340,14 @@ class PhotoResponse(BaseModel):
         return PhotoProcessStatus.COMPLETED
 
 
+class BatchDeleteRequest(BaseModel):
+    """批量删除照片的请求"""
+
+    photo_ids: list[UUID] = Field(
+        ..., max_length=50, description="要删除的照片ID列表，单次最多50张"
+    )
+
+
 class PhotoListResponse(BaseModel):
     """照片列表响应"""
 

@@ -30,6 +30,16 @@ class UserError(BaseError):
         super().__init__(code=code, message=message, data=data, status_code=400)
 
 
+class UserAlreadyRegisteredError(UserError):
+    """注册账号唯一性冲突"""
+
+    def __init__(self, field: str = "账号"):
+        super().__init__(
+            code=APIStatus.USER_EXISTS.code,
+            message=f"{field}已被注册",
+        )
+
+
 class TokenError(BaseError):
     """Token 相关异常"""
 
