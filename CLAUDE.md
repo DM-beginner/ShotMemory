@@ -23,12 +23,13 @@ ShotMemory is a full-stack photo management app. Backend is Python/FastAPI, fron
 - 术语表：[`docs/glossary.md`](./docs/glossary.md)
 - 故障/运维：[`docs/runbook.md`](./docs/runbook.md)
 - 上生产前清单：[`docs/production-readiness.md`](./docs/production-readiness.md)
+- **文档编写准则**：[`docs/writing-guidelines.md`](./docs/writing-guidelines.md) — 写 / 改任何 `.md` 文档前必读
 
 ## AI 工作守则
 
 1. 修任何模块前必读 `docs/modules/<对应>.md`；改架构级行为先看 `docs/architecture.md` + `docs/decisions.md`。
 2. 改 schema 必须生成新的 Alembic 迁移（`uv run alembic revision --autogenerate -m "..."`），不要手改已有迁移。
-3. 不要在文档里写 `file.py:line` 的精确行号引用——会随重构腐烂。要指向代码请用符号名（函数/类/常量），让 IDE / `grep` 能跟踪。
+3. **写 / 改任何 `.md` 文档前必读 [`docs/writing-guidelines.md`](./docs/writing-guidelines.md)**——不要在文档里写 `file.py:line` 行号引用、不要复述代码已经清楚表达的内容、不要重复造副本。
 4. 写新路由时尽量复用 `SessionDep` / `StorageDep` / `RedisDep` / `CurrentUser` 四个 alias（不强制，但有现成的就别另起）。
 5. 前端改动需手工跑一次 `pnpm dev` 用浏览器走一遍黄金路径，不能只靠 `tsc` 通过就声称完成。
 6. 不要在 README/docs 里维护代码目录树、字段表、API JSON 样例——这些代码与 `/v1/docs` (OpenAPI) 已是权威来源。
@@ -52,7 +53,24 @@ uv run python -m main                                # Dev server (http://localh
 uv run arq core.worker.WorkerSettings                # Background task worker (separate terminal)
 uv run ruff check . && uv run ruff format .          # Lint + format
 uv run pytest                                        # Tests (uses shotmemory_test DB)
-uv run locust -f tests/locustfile.py --host=http://localhost:5683
+uv run locust -f tests/locustfile.py --host=http://localhost:5684
+```
+
+### 压测（独立测试 API 实例，不污染开发库）
+```bash
+# 1. 起测试栈（profile=test，默认 docker compose up 不会启动）
+docker compose --profile test up -d --build test_api test_worker  # → 端口 5684
+
+# 2. 首次需初始化测试库（host 直连 docker postgres 跑迁移）
+cd backend && DATABASE_URL=postgresql+asyncpg://postgres:SZtu%40143237@localhost:5432/shotmemory_test \
+  uv run alembic upgrade head
+
+# 3. 跑 locust（locustfile 有护栏：host 端口=5683 直接 abort）
+cd backend && uv run locust -f tests/locustfile.py --host=http://localhost:5684
+
+# 4. 收尾（可选，清理测试 uploads volume）
+docker compose --profile test down
+docker volume rm shotmemory_test_uploads
 ```
 
 ### Frontend (working directory: `frontend/`)

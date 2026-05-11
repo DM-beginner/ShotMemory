@@ -50,10 +50,55 @@ services:
       - ./db-init:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
 
+  # ─── 压测专用：测试 API + 测试 Worker ──────────────────────────
+  # 默认不启动（profiles: ["test"]），需要 docker compose --profile test up -d
+  # 跟开发库完全物理隔离：独立 DB / Redis DB / uploads volume / 端口
+  test_api:
+    build:
+      context: ./backend
+    container_name: shotmemory_test_api
+    environment:
+      ENV: dev
+      HOST: 0.0.0.0
+      PORT: 5683
+      DATABASE_URL: postgresql+asyncpg://postgres:SZtu%40143237@postgres:5432/shotmemory_test
+      REDIS_CACHE_URL: redis://redis:6379/2
+      REDIS_ARQ_URL: redis://redis:6379/3
+      SECRET_KEY: locust_test_only_secret
+    ports:
+      - "5684:5683"
+    volumes:
+      - test_uploads:/app/uploads
+    depends_on:
+      - postgres
+      - redis
+    profiles: ["test"]
+    restart: unless-stopped
+
+  test_worker:
+    build:
+      context: ./backend
+    container_name: shotmemory_test_worker
+    command: uv run arq core.worker.WorkerSettings
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://postgres:SZtu%40143237@postgres:5432/shotmemory_test
+      REDIS_CACHE_URL: redis://redis:6379/2
+      REDIS_ARQ_URL: redis://redis:6379/3
+      SECRET_KEY: locust_test_only_secret
+    volumes:
+      - test_uploads:/app/uploads
+    depends_on:
+      - postgres
+      - redis
+    profiles: ["test"]
+    restart: unless-stopped
+
 # 全局存储卷声明
 volumes:
   redis_data:
   postgres_data:
+  test_uploads:
     # 为什么让它“空”着： 
     # 如果你留空，Docker 会在 Linux 深处的 /var/lib/docker/volumes/ 
     # 目录下自动为你划拨一块专用的安全空间。
